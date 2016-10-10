@@ -1,0 +1,34 @@
+<link rel="import" href="../polymer/polymer.html">
+
+<!--
+`poly-infinite-scroll`
+
+
+@demo demo/index.html 
+-->
+
+<dom-module id="poly-infinite-scroll">
+  <template>
+    <style>
+      :host {
+        display: block;
+      }
+    </style>
+    <h2>Hello [[prop1]]</h2>
+  </template>
+
+  <script>
+    Polymer({
+
+      is: 'poly-infinite-scroll',
+
+      properties: {
+        prop1: {
+          type: String,
+          value: 'poly-infinite-scroll',
+        },
+      },
+
+    });
+  </script>
+</dom-module>
