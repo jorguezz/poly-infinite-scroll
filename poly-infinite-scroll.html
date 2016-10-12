@@ -2,7 +2,17 @@
 
 <!--
 `poly-infinite-scroll`
+Example:
 
+    <poly-infinite-scroll id="infinite"
+      params="{{params}}"
+      upper-limit="300"
+      lower-limit="300"
+      page-size="24"
+      items="[[data]]"
+      pages="{{pages}}"
+      spy-element-list="my-item">
+  </poly-infinite-scroll>
 
 @demo demo/index.html 
 -->
@@ -11,23 +21,1060 @@
   <template>
     <style>
       :host {
-        display: block;
+          display: block;
+      }
+
+      .show_previous_page {
+          text-align: center;
+          margin: 1.5rem 0;
+          clear: both;
+      }
+
+      .show_previous_page iron-icon {
+          top: -2px;
+          width: 20px;
+          position: relative;
+      }
+
+      .show_previous_page a {
+          color: var(--default-primary-color);
       }
     </style>
-    <h2>Hello [[prop1]]</h2>
+    <style include="iron-flex"></style>
+
+    <div id="prevspinner" class="spinner hide"></div>
+
+      <p class="show_previous_page">
+          <a href="#" id="prevpage" class="hide">
+              <iron-icon icon="settings-backup-restore"></iron-icon>
+              <span>Show previous</span>
+          </a>
+      </p>
+
+      <div id="mainspinner" class="spinner hide"></div>
+
+      <content id="empty-response" select=".empty-response"></content>
+
+      <ul id="list" class="layout horizontal wrap">
+      </ul>
+
+      <div id="nextspinner" class="spinner hide"></div>
+
   </template>
 
   <script>
     Polymer({
+        is: 'poly-infinite-scroll',
 
-      is: 'poly-infinite-scroll',
+        properties: {
+            /**
+             * When set, the given element is observed for scroll position
+             */
+            scrollTarget: {
+                type: Object,
+                value: null
+            },
 
-      properties: {
-        prop1: {
-          type: String,
-          value: 'poly-infinite-scroll',
+            /**
+             * Default page number
+             */
+            page: {
+                type: Number,
+                notify: true,
+                value: 0
+            },
+
+            /**
+             * Default pageSize to paginate
+             */
+            pageSize: {
+                type: Number,
+                value: 12
+            },
+
+            /**
+             * Key name to change queryParam
+             */
+            pageStr: {
+                type: String,
+                value: 'page'
+            },
+
+            /**
+             * Distance from the top bound of the scroller
+             * where the "upper trigger" will fire.
+             */
+            upperLimit: {
+                type: Number,
+                value: 0
+            },
+
+            /**
+             * Distance from the bottom bound of the scroller
+             * where the "lower trigger" will fire.
+             */
+            lowerLimit: {
+                type: Number,
+                value: 0
+            },
+
+            /**
+             * Value that tracks the triggered state of the upper bound
+             */
+            upperTriggered: {
+                type: Boolean,
+                value: false,
+                notify: true,
+                observer: 'triggeredChanged'
+            },
+
+            /**
+             * Value that tracks the triggered state of the lower bound
+             */
+            lowerTriggered: {
+                type: Boolean,
+                value: false,
+                notify: true,
+                observer: 'triggeredChanged'
+            },
+
+            // Track previous pages loaded
+            upperPointer: {
+                type: Number,
+                value: 1
+            },
+
+            // Track next pages loaded
+            lowerPointer: {
+                type: Number,
+                value: 1
+            },
+
+            /**
+             * An array container items determining how many instances of the template
+             * to stamp and that that each template instance should bind to.
+             */
+            items: {
+                type: Array,
+                notify: true,
+                value: []
+            },
+
+            scrollSpy: {
+                type: Boolean,
+                value: true
+            },
+
+            // Activate scroll Spy
+            spyElement: {
+                type: Boolean,
+                value: false
+            },
+
+            element: {
+                type: String
+            },
+
+            elementClass: {
+                type: String
+            },
+
+            /*
+             * Save page groups node elements to optimize page seach on spy
+             */
+            pageGroups: {
+                type: Array,
+                value: []
+            },
+
+            isLastPage: {
+                type: Boolean,
+                value: false
+            },
+
+            lastPage: {
+                type: Number
+            },
+
+            params: {
+                type: Object,
+                notify: true
+            },
+
+            offsetArr: {
+                type: Array,
+                value: []
+            },
+
+            lastKnowScrollY: {
+                type: Number,
+                value: 1
+            },
+
+            ticking: {
+                type: Boolean,
+                value: false
+            },
+
+            sortable: {
+                type: Boolean,
+                value: false
+            }
         },
-      },
+
+        listeners: {
+            'item:clicked': '_itemClicked'
+        },
+
+        observers: [
+            'init(params, pageSize, upperLimit, lowerLimit, scrollTarget)',
+            'paramsQueryChanged(params.query)'
+        ],
+
+        detached: function() {
+            // Remove listener for any previous scroll target
+            this._attached = false;
+            this.removeScrollListener();
+            this.removeScrollSpyListener();
+            this.$.prevpage.removeEventListener('click', this.handlerPrevClick);
+
+            this._resetItems();
+            this.blocked = true;
+            this.observer = null;
+        },
+
+        attached: function() {
+            this._attached = true;
+            this.createInitialElements();
+            this.craeteScrollHandlers();
+            this._hideEmptyContentBox();
+
+
+            if (this.spyElement) {
+                // Scroll Listener to handler ScrollSpy
+                //this._scrollTarget.addEventListener('scroll', this._trottledScrollSpyHandler);
+                this.addScrollSpyListener();
+            }
+
+            // PrevPage click listener
+            this.$.prevpage.addEventListener('click', this.handlerPrevClick.bind(this));
+        },
+
+        init: function() {
+            if (this._scrollListener) {
+                this.removeScrollListener();
+            }
+
+            if (this._scrollSpyListener) {
+                this.removeScrollSpyListener();
+            }
+
+            this.observer = null;
+
+            this._resetItems();
+
+            this._hidePreviousBtn();
+
+            // Get pageFromUrl on init or default page value
+            this.page = this._getPageFromUrl(); // 0 index
+
+            if (this.page === undefined) { // TODO remove
+                setTimeout(function() {
+                    // redirect('/404');
+                }, 100);
+                return;
+            }
+
+            if (this._isPageOffsetExcedded()) { return; }
+
+            // Refresh with filters
+            this._parseQueryString();
+
+            // Set upper and lower pointers 0 index based
+            this._setPointers(this.page);
+
+            if (this.page >= 1 && this.upperLimit) {
+                // show link "show previus page"
+                this._showBeforePageLink();
+            }
+
+            // Clear trigger state if user has cleared the limit
+            if (!this.upperLimit) {
+                this.set('upperTriggered', false);
+            }
+
+            if (!this.lowerLimit) {
+                this.set('lowerTriggered', false);
+            }
+
+            if(this.params.sort) {
+                this.sortOnInit = true;
+            }
+
+            // last valid upperPointer
+            this.originUpperPointer = this.originLowerPointer = 1;
+            //this.pageSize = window.bowser.ios && window.bowser.version < 9 ? 24 : this.pageSize;
+            this.blocked = false;
+            this.restored = false;
+        },
+
+        createInitialElements: function() {
+            this._scrollTarget = Polymer.dom(window).node;
+            this._containerEl = Polymer.dom(this).node;
+            this._list = this.$.list;
+        },
+
+        craeteScrollHandlers: function() {
+            if (!this._throttleBoundHandler) {
+                this._throttleBoundHandler = _.throttle(this.scroll.bind(this), 350);
+            }
+
+            if (!this._trottledScrollSpyHandler) {
+                this._trottledScrollSpyHandler = _.throttle(this._scrollSpyHandler.bind(this), 350);
+            }
+        },
+
+        initialLoad: function(pageRequest) {
+            var self = this;
+            if (this._isPageOffsetExcedded()) { return; }
+
+            this.$.mainspinner.classList.remove('hide');
+
+            this.fetch(pageRequest).then(function() {
+                self.$.mainspinner.classList.add('hide');
+                self.originLowerPointer = pageRequest;
+                //self.$.mainspinner.hide();
+                self.fire('page:loaded');
+                self.createInitialElements();
+                self.craeteScrollHandlers();
+                self.addScrollEventListener();
+                self._containerElOffsetTop = self._containerEl.offsetTop;
+
+                // Server pagination based 0 index
+                self.updateQueryString(pageRequest + 1);
+            });
+        },
+
+        /*
+         * Handler params.query change and reset page pages and items
+         */
+        paramsQueryChanged: function() {
+            this._setPointers(this.page);
+            this._resetItems();
+            this._domObserverDisconnect();
+
+            if (this.page !== undefined) {
+                this.initialLoad(this.page);
+            }
+        },
+
+        /*
+         * Observe to all changes to infinite scroll element and child nodes "pages"
+         * This way we can know when new node elements or "pages" are inserted to de Dom
+         * Used to detect new page rendered after user click "show previus page" and go to prev page
+         */
+        mutationObserve: function(cb) {
+            this.domObserver = new MutationObserver(cb);
+
+            // Observe node page list
+            var observerConfig = {
+                childList: true
+            };
+
+            // Node, config
+            // In this case we'll listen to all changes to infinite element and child nodes
+            //var root = this.querySelector(this.spyElement);
+            if (!this._list) {
+                return;
+            }
+
+            this.domObserver.observe(this._list, observerConfig);
+
+            return this.domObserver;
+        },
+
+        addScrollEventListener: function() {
+            // Add listener for new scroll target
+            if (this._scrollTarget && !this._scrollListener && this._attached) {
+                this._scrollListener = this._scrollTarget.addEventListener('scroll', this._throttleBoundHandler);
+            }
+        },
+
+        /*
+         * Scroll Handler to detect upper and lower limits
+         * Trigger
+         */
+        scroll: function() {
+            var self = this,
+                scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
+
+            // FIX Chrome jump prev page bug
+            // Force restore position again
+            if (window.bowser.chrome) {
+                if (scrollY <= 0 && this.lastKnowScrollY <= 1 && this.upperPointer + 1 && !this.upperTriggered && !this.prevBottomIsRendered) {
+                    this.removeScrollListener();
+                    if (this.restored) {
+                        this._restoreScrollPosition();
+                    }
+
+                    requestAnimationFrame(function() {
+                        self.addScrollEventListener();
+                        self.restored = false;
+                        return;
+                    });
+                    return;
+                }
+            }
+
+            this.set('lastKnowScrollY', scrollY);
+            this.lastKnowClientHeight = window.document.documentElement.clientHeight;
+            this.lastKnowContainerClientHeight = this._containerEl.clientHeight;
+            this.requestTick();
+        },
+
+        requestTick: function() {
+            var self = this;
+            if (!this.ticking) {
+                requestAnimationFrame(this._updateOnScroll.bind(self));
+                this.set('ticking', true);
+            }
+        },
+
+        handlerPrevClick: function(e) {
+            var self = this;
+            if (e) {
+                e.preventDefault();
+            }
+            self._hidePreviousBtn();
+            // Save position before click actions are triggered
+            self.set('upperTriggered', true);
+        },
+
+        /*
+         * Hide Previous botton
+         */
+        _hidePreviousBtn: function() {
+            // Hide previous Btn
+            if (this.prevBottomIsRendered) {
+                this.$.prevpage.classList.add('hide');
+                this.set('prevBottomIsRendered', false);
+            }
+        },
+
+        _hideEmptyContentBox: function() {
+            var emptyResponseContent = this.getContentChildren('#empty-response')[0];
+            if (emptyResponseContent && !emptyResponseContent.classList.contains('hide')) {
+                emptyResponseContent.classList.add('hide');
+                this.blocked = false;
+                this.addScrollEventListener();
+            }
+        },
+
+        _showEmptyContentBox: function() {
+            var emptyResponseContent = this.getContentChildren('#empty-response')[0];
+            if (emptyResponseContent && emptyResponseContent.classList.contains('hide')) {
+                emptyResponseContent.classList.remove('hide');
+                this.removeScrollListener();
+                this.blocked = true;
+            }
+        },
+
+        /*
+         * On change Lower/upper triggered and it's true, call loadMore method
+         */
+        triggeredChanged: function(newValue) {
+            if (newValue) {
+                this.loadMore();
+            }
+        },
+
+        /*
+         * Load more PrevItems or NextItems if this.upperTriggered or lowerTriggered are setted
+         * After calling "prevPage" or "nextPage", is passed a callback to reset scroll listener
+         * and upperTriggered or lowerTriggered vars
+         */
+        loadMore: function() {
+            var self = this;
+
+            // UP
+            if (this.upperTriggered) {
+                this.$.prevspinner.classList.remove('hide');
+
+                // Save scroll position before click actions are triggered
+                this._saveScrollPotition();
+
+                this.mutationObserve(this._mutationUpCb.bind(this));
+
+                this.removeScrollListener();
+
+                this.prevPage(function(err) {
+                    self._clearUpper();
+                    if (!err) {
+                        self.$.prevspinner.classList.remove('hide');
+                    }
+
+                    // Fix safari invalid scrollY on render prepend items
+                    setTimeout(function() {
+                        self.addScrollEventListener();
+                        //this.lastKnowScrollY = self._scrollTarget.scrollY;
+                    }, 50);
+                });
+            }
+
+            // DOWN
+            if (this.lowerTriggered) {
+                if (this.$.mainspinner.classList.contains('hide')) {
+                    this.$.nextspinner.classList.remove('hide');
+                }
+
+                this.mutationObserve(this._mutationDownCb.bind(this));
+
+                this.nextPage(function(err) {
+                    self._clearLower();
+                    if (!err) {
+                        self.$.nextspinner.classList.remove('hide');
+                    }
+                });
+            }
+        },
+
+        /*
+         * Set new upperPointer and pageRequest, send request,
+         * set response data to items array and set response data to pages group
+         * finally update url with new page load
+         */
+        prevPage: function(cb) {
+            var self = this;
+            this.upperPointer -= 1;
+            var pageRequest = this.upperPointer;
+            if (this._isPageOffsetExcedded()) { return; }
+
+
+            this.removeScrollSpyListener();
+            this.fetch(pageRequest, 'up').then(function() {
+                self.originUpperPointer = pageRequest;
+                cb();
+            }).catch(function(err) {
+                // Handle offline request
+                // Restore pointers, and page to last successfuly request
+                //console.log(err);
+                self.upperPointer = self.originUpperPointer;
+                cb(err);
+            });
+        },
+
+        /*
+         * Set new lowerPointer and pageRequest, send request,
+         * set response data to items array and set response data to pages group
+         * finally update url with new page load
+         */
+        nextPage: function(cb) {
+            var self = this;
+            this.lowerPointer += 1;
+            var pageRequest = this.lowerPointer;
+            if (this._isPageOffsetExcedded()) { return; }
+
+            this.fetch(pageRequest, 'down').then(function() {
+                self.originLowerPointer = pageRequest;
+                cb();
+            }).catch(function(err) {
+                //console.log(err);
+                // Handle offline request
+                // Restore pointers, and page to last successfuly request
+                self.lowerPointer = self.originLowerPointer;
+                cb(err);
+            });
+
+        },
+
+        /**
+         * Send request using corbel-connect
+         * @param  String|Number pageRequest
+         * @param  String direction Optional direction up|down
+         * @return Promise
+         */
+        fetch: function(pageRequest, direction) {
+            if (!this.params) {
+                return Promise.resolve({});
+            }
+            var self = this;
+            this.blocked = true;
+
+            this.queryparams = {
+                query: this.params.query || '',
+                page: pageRequest,
+                pageSize: this.pageSize
+            };
+
+            fetch(/*this.endpoint*/, {
+              method: 'get'
+            })
+            .then(function(data) {
+                if (!data) {
+                    return;
+                }
+                self.page = pageRequest;
+
+                // First initial observer
+                if (!self.domObserver) {
+                    self.mutationObserve(self._mutationDownCb.bind(self));
+                }
+
+                self.onSuccess.call(self, data, pageRequest, direction);
+            }).catch(function(err) {
+                self.blocked = false;
+                self.onErrors.call(self, err, direction);
+            });
+        },
+
+        /*
+         * Success cb is called when data is fetched
+         */
+        onSuccess: function(data, pageRequest, direction) {
+            if (data && data.count) {
+                this.setLastPage(data.count);
+            }
+
+            // Page Request zero index
+            pageRequest += 1;
+            this.blocked = false;
+            // data received successfully
+            if (data && data.length > 0) {
+                //this._prepareItems.call(this, direction, data);
+                var frag = this._prepareItems(data);
+                // Render fragment with node tree
+                this._render(frag, direction);
+
+            } else {
+                if (data.count >= 0 && data.length === 0 &&
+                    (pageRequest > this.lastPage)) {
+                    if (data.count === 0) {
+                        this._showEmptyContentBox();
+                    } else {
+                        // redirect /error/nopages
+                    }
+                } else if (!data.count) {
+                    this._hidePreviousBtn();
+                }
+            }
+
+            // Block Scroll down if lastpage was fetched
+            if (pageRequest === this.lastPage) {
+                this.set('isLastPage', true);
+            }
+        },
+
+        /*
+         * Error cb is called when data is fetched
+         */
+        onErrors: function(err, direction) {
+            if (direction === 'up') {
+                this.$.prevspinner.classList.remove('hide');
+            } else if (direction === 'down') {
+                this.$.nextspinner.classList.remove('hide');
+            }
+            throw err;
+        },
+
+        /*
+         * Deprecated
+         * Page doesn't exist
+         * Ej: ?page=999
+         * Go to lastPage and update url
+         */
+        goLastPage: function() {
+            var self = this;
+            this.set('upperPointer', this.lastPage);
+            this.fetch(this.lastPage).then(function() {
+                self.updateQueryString(self.lastPage + 1);
+            }).catch(function() {
+                //console.log(err);
+            });
+        },
+
+        setLastPage: function(count) {
+            this.lastPage = Math.ceil(count / this.pageSize);
+        },
+
+        /*
+         * Update query param 'page', and set url with new key/value
+         */
+        updateQueryString: function(value) {
+            // Change url page on spy
+            app.utils.addToUrl({
+                page: value
+            });
+        },
+
+        removeScrollListener: function() {
+            this._scrollTarget.removeEventListener('scroll', this._throttleBoundHandler);
+            this._scrollListener = null;
+        },
+
+        removeScrollSpyListener: function() {
+            this._scrollTarget.removeEventListener('scroll', this._trottledScrollSpyHandler);
+            this._scrollSpyListener = null;
+        },
+
+        addScrollSpyListener: function() {
+            if (!this._scrollSpyListener) {
+                this._scrollSpyListener = this._scrollTarget.addEventListener('scroll', this._trottledScrollSpyHandler);
+            }
+        },
+
+        _isPageOffsetExcedded: function() {
+            // offset limit
+            if (this.page){
+                if (this._scrollTarget) {
+                    this.removeScrollListener();
+                    this.removeScrollSpyListener();
+                }
+                setTimeout(function() {
+                    // redirect('/error/nopages');
+                }, 100);
+                return true;
+            }
+            return false;
+        },
+
+        _itemClicked: function(e, item) {
+            var ref,
+                i = 0;
+
+            if(item && item.parentElement){
+                item = item.parentElement;
+            }
+
+            while(!ref && i < this.pageSize) {
+                if(item.attributes && item.attributes.pageref) {
+                    ref = item.attributes.pageref.value;
+                }
+
+                item = item.previousSibling;
+                i++;
+            }
+
+            if(ref){
+                this.updateQueryString(ref);
+            }
+        },
+
+        /**
+         * Reset items an pages list to empty
+         */
+        _resetItems: function() {
+            this.set('offsetArr', []);
+            this.set('isLastPage', false);
+            this.set('lastPage', 0);
+            this._cleanElements();
+        },
+
+        _cleanElements: function() {
+            if (this._list) {
+                //this._list.innerHTML = '';
+                while (Polymer.dom(this._list).firstChild) {
+                    Polymer.dom(this._list).removeChild(Polymer.dom(this._list).firstChild);
+                }
+                Polymer.dom.flush();
+            }
+        },
+
+        /*
+         * Get Page value from url  ?page=value
+         * @return Integer Page Number value
+         */
+        _getPageFromUrl: function() {
+            var queryString = app.utils.getQueryString(),
+                pageFromUrl;
+
+            if (queryString) {
+                var query = app.utils.queryParamsToHash(queryString);
+                if (query && query.page && query.page > 0) { // TODO remove
+                    pageFromUrl = query.page - 1;
+                } else {
+                    // Parse url ?page= | ?invalidQueryString
+                    return undefined;
+                }
+            }
+            return parseInt(pageFromUrl || 0);
+        },
+
+        _domObserverDisconnect: function() {
+            if (this.domObserver) {
+                this.domObserver.disconnect();
+                this.domObserver = null;
+            }
+        },
+
+        _mutationUpCb: function(mutations) {
+            this._addPageMarkup(mutations);
+            // update all position offsets
+            this._resetAllOffsets();
+            // Restore scroll position
+            this.removeScrollListener();
+            this._restoreScrollPosition();
+            this._domObserverDisconnect();
+            this.addScrollSpyListener();
+            this.restored = true;
+        },
+
+        _mutationDownCb: function(mutations) {
+            var node = this._addPageMarkup(mutations);
+            // Add new node offsetTop to offsetArr cache
+            this._addOffset(node);
+            this._domObserverDisconnect();
+        },
+
+        _addPageMarkup: function(mutations) {
+            var self = this;
+
+            var node = mutations[0].addedNodes[0];
+
+            var nodeParsed = node.nodeName && node.nodeName.toLowerCase ? node.nodeName.toLowerCase() : null;
+            if (nodeParsed === 'li') {
+                Polymer.dom(node).setAttribute('pageRef', self.page + 1);
+            }
+
+            return node;
+        },
+
+        /*
+         * OffsetTop cache to spy on scroll
+         */
+        _addOffset: function(node) {
+            var self = this;
+
+            if (!node) {
+                return;
+            }
+
+            var offsetTop = node.offsetTop;
+
+            self.offsetArr.push({
+                page: self.page + 1,
+                offset: offsetTop // force layout
+            });
+
+        },
+
+        // Reset all OffsetTop on load previus page
+        _resetAllOffsets: function() {
+            var self = this;
+
+            var pageGroups = Polymer.dom(this._list).querySelectorAll('li[pageRef]');
+
+            this.set('offsetArr', []);
+            _.map(pageGroups, function(page) {
+                var pageRef = parseInt(page.getAttribute('pageRef')),
+                    offsetTop = page.offsetTop;
+
+                self.offsetArr.push({
+                    page: pageRef,
+                    offset: offsetTop
+                });
+            });
+        },
+
+        // Debounce scroll update
+        _updateOnScroll: function() {
+            // scroll Up
+            if (this._shouldScrollUp()) {
+                if (this.lastKnowScrollY <= this.upperLimit + this._containerElOffsetTop) {
+                    this.set('upperTriggered', true);
+                }
+            }
+
+            // scroll Down
+            if (this._shouldScrollDown()) {
+                if (this.lastKnowScrollY + this.lastKnowClientHeight + this.lowerLimit >= this.lastKnowContainerClientHeight + this._containerElOffsetTop) {
+                    this.set('lowerTriggered', true);
+                }
+            }
+
+            this.set('ticking', false);
+        },
+
+        _shouldScrollUp: function() {
+            return !this.upperTriggered && this.upperLimit && !this.prevBottomIsRendered && !this.blocked && this.upperPointer > 0;
+        },
+
+        _shouldScrollDown: function() {
+            return !this.lowerTriggered && this.lowerLimit && !this.isLastPage && !this.blocked;
+        },
+
+        /*
+         * Spy page containers and change url ?page=value
+         */
+        _scrollSpyHandler: function() {
+            var i,
+                scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
+
+            // Find offset into cache offset containers
+            for (i = this.offsetArr.length - 1; i >= 0; i -= 1) {
+                var offset = this.offsetArr[i].offset,
+                    page = this.offsetArr[i].page;
+
+                if (offset < scrollY + 350) {
+                    this.updateQueryString(page);
+                    break;
+                }
+            }
+
+            if (scrollY <= 0) {
+                this.updateQueryString(this.upperPointer + 1);
+            }
+        },
+
+        /*
+         * Parse queryString to hash and update this.params.query
+         */
+        _parseQueryString: function() {
+            var self = this,
+                queryString = app.utils.getQueryString();
+
+            if (queryString) {
+                var tmpQueryUrl = _.omit(app.utils.queryParamsToHash(queryString), ['page']);
+
+                if (tmpQueryUrl.order) {
+                    this.params.order = tmpQueryUrl.order;
+                }
+
+                if (tmpQueryUrl.searchTerm) {
+                    return;
+                }
+                tmpQueryUrl = app.utils.paramsToArray(tmpQueryUrl);
+
+                var tmp = [];
+                if (self.params && self.params.query) {
+                    tmp = JSON.parse(self.params.query);
+                }
+
+                _.each(tmpQueryUrl, function(value, key) {
+                    //  query:[{"$in":{"lang":["spa"]}},{"$in":{"topics":["YF"]}}]
+                    var obj = {};
+                    obj[key] = _.clone(value);
+                    var aux = {
+                        '$in': obj
+                    };
+                    tmp.push(aux);
+                });
+
+                if (this.params) {
+                    this.params.query = JSON.stringify(tmp);
+                }
+            }
+        },
+
+        /**
+         * Clear the upper limit, following an `upper-trigger` event.
+         * @method clearUpper
+         */
+        _clearUpper: function() {
+            var self = this;
+            this.async(function() {
+                self.set('upperTriggered', false);
+                self.$.prevspinner.classList.add('hide');
+            });
+        },
+
+        /**
+         * Clear the lower limit, following a `lower-trigger` event.
+         * @method clearLower
+         */
+        _clearLower: function() {
+            var self = this;
+            this.async(function() {
+                self.set('lowerTriggered', false);
+                self.$.nextspinner.classList.add('hide');
+            });
+        },
+
+        /*
+         * Add page with items fetched, to items array
+         */
+        _prepareItems: function(data) {
+            var self = this;
+
+            var _dataSource = data,
+                frag = document.createDocumentFragment();
+
+            // Generate node tree
+            _.map(_dataSource, function(item) {
+                var _el = self._buildItem(item, _dataSource);
+                frag.appendChild(_el);
+            });
+
+            return frag;
+        },
+
+        _buildItem: function(item, dataSource) {
+            var _instance,
+                _item;
+
+            _instance = document.createElement(this.element);
+
+            // Create list item
+            _item = document.createElement('li');
+            Polymer.dom(_item).classList.add(this.elementClass);
+            Polymer.dom(_item).appendChild(_instance);
+
+            return _item;
+        },
+
+        _render: function(frag, dir) {
+            if (dir === 'up') {
+                this._hidePreviousBtn();
+                Polymer.dom(this.$.list).insertBefore(frag, Polymer.dom(this.$.list).firstChild);
+            } else {
+                Polymer.dom(this.$.list).appendChild(frag);
+            }
+            Polymer.dom.flush();
+        },
+
+        /*
+         * Show previous button and block upper scroll untill user clicks this button
+         * If button is clicked, load previuos page
+         */
+        _showBeforePageLink: function() {
+            // Block upper scroll untill click de bottom
+            this.set('upperTriggered', false);
+            // Show previous buttom at top
+            this.$.prevpage.classList.remove('hide');
+            this.set('prevBottomIsRendered', true);
+        },
+
+        /*
+         * Restore scrollTop position
+         */
+        _restoreScrollPosition: function() {
+            var _target = window.document.body;
+            if (window.document.body.scrollHeight < window.document.documentElement.scrollHeight) {
+                _target = window.document.documentElement;
+            }
+
+            var newScrollPosition = _target.scrollHeight - this.previousScrollHeightMinusTop;
+            _target.scrollTop = newScrollPosition;
+        },
+
+        /*
+         * Save scrollTop position
+         */
+        _saveScrollPotition: function() {
+            var _target = window.document.body;
+            if (window.document.body.scrollHeight < window.document.documentElement.scrollHeight) {
+                _target = window.document.documentElement;
+            }
+
+            this.previousScrollHeightMinusTop = _target.scrollHeight - _target.scrollTop;
+        },
+
+        /*
+         * Set upperPointer and lowerPointer on initial setup
+         * default = 1
+         */
+        _setPointers: function(pageInitial) {
+            this.upperPointer = this.lowerPointer = pageInitial;
+        }
 
     });
   </script>
