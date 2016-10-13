@@ -41,7 +41,6 @@ Example:
           color: var(--default-primary-color);
       }
     </style>
-    <style include="iron-flex"></style>
 
     <div id="prevspinner" class="spinner hide"></div>
 
@@ -407,6 +406,7 @@ Example:
 
             // FIX Chrome jump prev page bug
             // Force restore position again
+            /*
             if (window.bowser.chrome) {
                 if (scrollY <= 0 && this.lastKnowScrollY <= 1 && this.upperPointer + 1 && !this.upperTriggered && !this.prevBottomIsRendered) {
                     this.removeScrollListener();
@@ -421,7 +421,7 @@ Example:
                     });
                     return;
                 }
-            }
+            }*/
 
             this.set('lastKnowScrollY', scrollY);
             this.lastKnowClientHeight = window.document.documentElement.clientHeight;
@@ -603,27 +603,33 @@ Example:
                 pageSize: this.pageSize
             };
 
-            var request = new Request(this.endpoint, {
+          
+            var request = new Request('data.json', {
               credentials: 'include',
               mode: 'cors',
               cache: 'no-store',
-              method: 'post',
+              method: 'get',
+              headers: new Headers({'Content-Type': 'application/json'}),
               body: this.queryparams
             });
 
-            fetch(request)
-            .then(function(data) {
-                if (!data) {
+            return fetch(request)
+            .then(function(response) {
+                response.json().then(function(data) {
+                  if (!data) {
                     return;
-                }
-                self.page = pageRequest;
+                    }
+                    self.page = pageRequest;
 
-                // First initial observer
-                if (!self.domObserver) {
-                    self.mutationObserve(self._mutationDownCb.bind(self));
-                }
+                    // First initial observer
+                    if (!self.domObserver) {
+                        self.mutationObserve(self._mutationDownCb.bind(self));
+                    }
 
-                self.onSuccess.call(self, data, pageRequest, direction);
+                    self.onSuccess.call(self, data, pageRequest, direction);
+                });
+
+                
             }).catch(function(err) {
                 self.blocked = false;
                 self.onErrors.call(self, err, direction);
@@ -1018,6 +1024,7 @@ Example:
 
             // Create list item
             _item = document.createElement('li');
+            _instance.item = item;
             Polymer.dom(_item).classList.add(this.elementClass);
             Polymer.dom(_item).appendChild(_instance);
 

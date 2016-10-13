@@ -1,0 +1,27 @@
+<link rel="import" src="../../polymer/polymer.html">
+
+<dom-module id="my-item">
+  <template>
+    <style>
+      :host {
+          display: block;
+      }
+    </style>
+
+    <div>
+      <p>{{item.name}}</p>
+    </div>
+    
+  </template>
+
+  <script>
+    Polymer({
+        is: 'my-item',
+        properties: {
+            item: {
+                type: Object
+            }
+        }
+    });
+  </script>
+</dom-module>
