@@ -5,6 +5,7 @@
 Example:
 
     <poly-infinite-scroll id="infinite"
+      endpoint="[[endpoint]]"
       params="{{params}}"
       upper-limit="300"
       lower-limit="300"
@@ -216,9 +217,9 @@ Example:
                 value: false
             },
 
-            sortable: {
-                type: Boolean,
-                value: false
+            endpoint: {
+                type: String,
+                value: ''
             }
         },
 
@@ -305,10 +306,6 @@ Example:
 
             if (!this.lowerLimit) {
                 this.set('lowerTriggered', false);
-            }
-
-            if(this.params.sort) {
-                this.sortOnInit = true;
             }
 
             // last valid upperPointer
@@ -606,9 +603,15 @@ Example:
                 pageSize: this.pageSize
             };
 
-            fetch(/*this.endpoint*/, {
-              method: 'get'
-            })
+            var request = new Request(this.endpoint, {
+              credentials: 'include',
+              mode: 'cors',
+              cache: 'no-store',
+              method: 'post',
+              body: this.queryparams
+            });
+
+            fetch(request)
             .then(function(data) {
                 if (!data) {
                     return;
@@ -701,7 +704,7 @@ Example:
          */
         updateQueryString: function(value) {
             // Change url page on spy
-            app.utils.addToUrl({
+            this._addToUrl({
                 page: value
             });
         },
@@ -784,11 +787,11 @@ Example:
          * @return Integer Page Number value
          */
         _getPageFromUrl: function() {
-            var queryString = app.utils.getQueryString(),
+            var queryString = window.location.href.split('?')[1],
                 pageFromUrl;
 
             if (queryString) {
-                var query = app.utils.queryParamsToHash(queryString);
+                var query = this._queryParamsToHash(queryString);
                 if (query && query.page && query.page > 0) { // TODO remove
                     pageFromUrl = query.page - 1;
                 } else {
@@ -930,10 +933,10 @@ Example:
          */
         _parseQueryString: function() {
             var self = this,
-                queryString = app.utils.getQueryString();
+                queryString = window.location.href.split('?')[1];
 
             if (queryString) {
-                var tmpQueryUrl = _.omit(app.utils.queryParamsToHash(queryString), ['page']);
+                var tmpQueryUrl = _.omit(this._queryParamsToHash(queryString), ['page']);
 
                 if (tmpQueryUrl.order) {
                     this.params.order = tmpQueryUrl.order;
@@ -942,7 +945,7 @@ Example:
                 if (tmpQueryUrl.searchTerm) {
                     return;
                 }
-                tmpQueryUrl = app.utils.paramsToArray(tmpQueryUrl);
+                tmpQueryUrl = this._paramsToArray(tmpQueryUrl);
 
                 var tmp = [];
                 if (self.params && self.params.query) {
@@ -1074,6 +1077,138 @@ Example:
          */
         _setPointers: function(pageInitial) {
             this.upperPointer = this.lowerPointer = pageInitial;
+        },
+
+        // Parses a query string into a hash
+        _queryParamsToHash: function(str) {
+            if (!str) {
+                return {};
+            }
+
+            var bracketRegex = /(?:([^\[]+))|(?:\[(.*?)\])/g;
+            var plusRegex = /\+/g;
+
+            var parameters = str.split('&'),
+                obj = {},
+                key,
+                match,
+                lastKey,
+                subKey,
+                depth;
+
+            // Iterate over key/value pairs
+            _.each(parameters, function(parameter) {
+                parameter = parameter.split('=');
+                key = decodeURIComponent(parameter[0].replace(plusRegex, '%20'));
+                lastKey = key;
+                depth = obj;
+
+                // Reset so we don't have issues when matching the same string
+                bracketRegex.lastIndex = 0;
+
+                // Attempt to extract nested values
+                while ((match = bracketRegex.exec(key)) !== null) {
+                    if (!_.isUndefined(match[1])) {
+
+                        // If we're at the top nested level, no new object needed
+                        subKey = match[1];
+                    } else {
+                        // If we're at a lower nested level, we need to step down, and make
+                        // sure that there is an object to place the value into
+                        subKey = match[2];
+                        depth[lastKey] = depth[lastKey] || (subKey ? {} : []);
+                        depth = depth[lastKey];
+                    }
+
+                    // Save the correct key as a hash or an array
+                    lastKey = subKey || _.size(depth);
+                }
+
+                // Assign value to nested object
+                try {
+                    depth[lastKey] = decodeURIComponent(parameter[1].replace(plusRegex, '%20'));
+                } catch (err) {
+                    console.log(err);
+                }
+            });
+
+            return obj;
+        },
+
+        _paramsToArray: function(params) {
+            _.each(params, function(value, key) {
+                params[key] = value.split(',');
+            });
+
+            return params;
+        },
+
+        _addToUrl: function(params) {
+
+            if (params === undefined || typeof params !== typeof {}) {
+                throw new Error('Error: utils.addToUrl: invalid params');
+            }
+
+            var stringParams;
+            var url = window.location.href;
+            var self = this;
+
+            _.each(params, function(value, key) {
+                url = self._removeQueryStringParameter(url, key);
+            });
+
+            _.each(params, function(value, key) {
+                if (value === '') {
+                    return;
+                }
+                stringParams = '';
+                if (typeof value === Array) {
+                    value.forEach(function(arrayValue) {
+                        stringParams += arrayValue + ',';
+                    });
+                    stringParams = stringParams.substring(0, stringParams.length - 1);
+                } else {
+                    stringParams += value;
+                }
+                url = self._updateQueryStringParameter(url, key, stringParams);
+            });
+
+            url = url.replace(/\?&/, '?');
+
+            if (url.lastIndexOf('?') === url.length - 1) {
+                url = url.substring(0, url.length - 1);
+            }
+            window.history.pushState({}, '', url);
+        },
+
+        _updateQueryStringParameter: function(uri, key, value) {
+            var re = new RegExp('([?&])' + key + '=.*?(&|$)', 'i');
+            var separator = uri.indexOf('?') !== -1 ? '&' : '?';
+            if (uri.match(re)) {
+                return uri.replace(re, '$1' + key + '=' + value + '$2');
+            } else {
+                return uri + separator + key + '=' + value;
+            }
+        },
+
+        _removeQueryStringParameter: function(url, parameter) {
+            var urlparts = url.split('?');
+
+            if (urlparts.length >= 2) {
+
+                var prefix = encodeURIComponent(parameter) + '=';
+                var pars = urlparts[1].split(/[&;]/g);
+
+                for (var i = pars.length; i-- > 0;) {
+                    if (pars[i].lastIndexOf(prefix, 0) !== -1) {
+                        pars.splice(i, 1);
+                    }
+                }
+
+                url = urlparts[0] + '?' + pars.join('&');
+            }
+
+            return url;
         }
 
     });
