@@ -25,6 +25,16 @@ Example:
           display: block;
       }
 
+      ul {
+        list-style: none;
+        padding:0;
+        margin:0;
+      }
+
+      .hide {
+        display:none;
+      }
+
       .show_previous_page {
           text-align: center;
           margin: 1.5rem 0;
@@ -604,7 +614,7 @@ Example:
             };
 
           
-            var request = new Request('data.json', {
+            var request = new Request(this.endpoint, {
               credentials: 'include',
               mode: 'cors',
               cache: 'no-store',
@@ -648,14 +658,14 @@ Example:
             pageRequest += 1;
             this.blocked = false;
             // data received successfully
-            if (data && data.length > 0) {
+            if (data.response && data.response.length > 0) {
                 //this._prepareItems.call(this, direction, data);
-                var frag = this._prepareItems(data);
+                var frag = this._prepareItems(data.response);
                 // Render fragment with node tree
                 this._render(frag, direction);
 
             } else {
-                if (data.count >= 0 && data.length === 0 &&
+                if (data.count >= 0 && data.response.length === 0 &&
                     (pageRequest > this.lastPage)) {
                     if (data.count === 0) {
                         this._showEmptyContentBox();
@@ -944,13 +954,6 @@ Example:
             if (queryString) {
                 var tmpQueryUrl = _.omit(this._queryParamsToHash(queryString), ['page']);
 
-                if (tmpQueryUrl.order) {
-                    this.params.order = tmpQueryUrl.order;
-                }
-
-                if (tmpQueryUrl.searchTerm) {
-                    return;
-                }
                 tmpQueryUrl = this._paramsToArray(tmpQueryUrl);
 
                 var tmp = [];
@@ -1185,7 +1188,7 @@ Example:
             if (url.lastIndexOf('?') === url.length - 1) {
                 url = url.substring(0, url.length - 1);
             }
-            window.history.pushState({}, '', url);
+            window.history.replaceState(null, null, url);
         },
 
         _updateQueryStringParameter: function(uri, key, value) {

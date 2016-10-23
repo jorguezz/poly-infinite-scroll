@@ -23,14 +23,15 @@
       <demo-snippet>
         <template>
           <poly-infinite-scroll id="infinite"
-            endpoint=""
+            endpoint="data.json"
             params="{{params}}"
             upper-limit="300"
             lower-limit="300"
-            page-size="24"
+            page-size="12"
             items="[[data]]"
             pages="{{pages}}"
             element="my-item"
+            element-class="custom--elem"
             spy-element-list="my-item">
           </poly-infinite-scroll>
         </template>
