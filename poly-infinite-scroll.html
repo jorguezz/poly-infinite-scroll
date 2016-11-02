@@ -5,15 +5,18 @@
 Example:
 
     <poly-infinite-scroll id="infinite"
-      endpoint="[[endpoint]]"
-      params="{{params}}"
-      upper-limit="300"
-      lower-limit="300"
-      page-size="24"
-      items="[[data]]"
-      pages="{{pages}}"
-      spy-element-list="my-item">
-  </poly-infinite-scroll>
+            endpoint="http://localhost:3000/posts"
+            response-items-name="articles"
+            params="{{params}}"
+            upper-limit="300"
+            lower-limit="300"
+            page-size="12"
+            items="[[data]]"
+            pages="{{pages}}"
+            element="my-item"
+            element-class="custom__elem"
+            spy-element-list="my-item">
+          </poly-infinite-scroll>
 
 @demo demo/index.html 
 -->
@@ -175,12 +178,6 @@ Example:
                 value: true
             },
 
-            // Activate scroll Spy
-            spyElement: {
-                type: Boolean,
-                value: false
-            },
-
             element: {
                 type: String
             },
@@ -264,19 +261,11 @@ Example:
             this.craeteScrollHandlers();
             this._hideEmptyContentBox();
 
-
-            if (this.spyElement) {
-                // Scroll Listener to handler ScrollSpy
-                //this._scrollTarget.addEventListener('scroll', this._trottledScrollSpyHandler);
-                this.addScrollSpyListener();
-            }
-
             // PrevPage click listener
             this.$.prevpage.addEventListener('click', this.handlerPrevClick.bind(this));
         },
 
         init: function() {
-            console.log('init');
             if (this._scrollListener) {
                 this.removeScrollListener();
             }
@@ -293,13 +282,6 @@ Example:
 
             // Get pageFromUrl on init or default page value
             this.page = this._getPageFromUrl(); // 0 index
-
-            if (this.page === undefined) { // TODO remove
-                setTimeout(function() {
-                    // redirect('/404');
-                }, 100);
-                return;
-            }
 
             // Refresh with filters
             this._parseQueryString();
@@ -357,6 +339,7 @@ Example:
                 self.createInitialElements();
                 self.craeteScrollHandlers();
                 self.addScrollEventListener();
+                self.addScrollSpyListener();
                 self._containerElOffsetTop = self._containerEl.offsetTop;
 
                 // Server pagination based 0 index
@@ -416,25 +399,6 @@ Example:
         scroll: function() {
             var self = this,
                 scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
-
-            // FIX Chrome jump prev page bug
-            // Force restore position again
-            /*
-            if (window.bowser.chrome) {
-                if (scrollY <= 0 && this.lastKnowScrollY <= 1 && this.upperPointer + 1 && !this.upperTriggered && !this.prevBottomIsRendered) {
-                    this.removeScrollListener();
-                    if (this.restored) {
-                        this._restoreScrollPosition();
-                    }
-
-                    requestAnimationFrame(function() {
-                        self.addScrollEventListener();
-                        self.restored = false;
-                        return;
-                    });
-                    return;
-                }
-            }*/
 
             this.set('lastKnowScrollY', scrollY);
             this.lastKnowClientHeight = window.document.documentElement.clientHeight;
