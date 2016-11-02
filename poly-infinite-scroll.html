@@ -229,6 +229,11 @@ Example:
             endpoint: {
                 type: String,
                 value: ''
+            },
+
+            responseItemsName: {
+                type: String,
+                value: ''
             }
         },
 
@@ -271,6 +276,7 @@ Example:
         },
 
         init: function() {
+            console.log('init');
             if (this._scrollListener) {
                 this.removeScrollListener();
             }
@@ -341,6 +347,7 @@ Example:
         },
 
         initialLoad: function(pageRequest) {
+            console.log('initial Load!');
             var self = this;
             if (this._isPageOffsetExcedded()) { return; }
 
@@ -607,39 +614,41 @@ Example:
             var self = this;
             this.blocked = true;
 
-            this.queryparams = {
-                query: this.params.query || '',
-                page: pageRequest,
-                pageSize: this.pageSize
+            var _payload = {
+                "query": this.params.query || '',
+                "page": pageRequest,
+                "pageSize": this.pageSize
             };
+            
+            // Add initial values
+            var headers = new Headers();
+            headers.append("Content-Type", "application/json");
 
-          
             var request = new Request(this.endpoint, {
-              credentials: 'include',
               mode: 'cors',
-              cache: 'no-store',
-              method: 'get',
-              headers: new Headers({'Content-Type': 'application/json'}),
-              body: this.queryparams
+              cache: 'default',
+              method: 'POST',
+              headers: headers,
+              body: JSON.stringify(this._payload)
             });
 
-            return fetch(request)
-            .then(function(response) {
-                response.json().then(function(data) {
-                  if (!data) {
-                    return;
-                    }
-                    self.page = pageRequest;
+            return fetch(request).then(function(res) {
+                if(res.ok){
+                    return res.json().then(function(data) {
+                        if (!data) { return; }
+                        self.page = pageRequest;
 
-                    // First initial observer
-                    if (!self.domObserver) {
-                        self.mutationObserve(self._mutationDownCb.bind(self));
-                    }
+                        // First initial observer
+                        if (!self.domObserver) {
+                            self.mutationObserve(self._mutationDownCb.bind(self));
+                        }
 
-                    self.onSuccess.call(self, data, pageRequest, direction);
-                });
-
-                
+                        self.onSuccess.call(self, data, pageRequest, direction);
+                    }).catch(function(err) {
+                        console.log(err);
+                    });
+                }
+                 
             }).catch(function(err) {
                 self.blocked = false;
                 self.onErrors.call(self, err, direction);
@@ -658,14 +667,14 @@ Example:
             pageRequest += 1;
             this.blocked = false;
             // data received successfully
-            if (data.response && data.response.length > 0) {
+            if (data[this.responseItemsName] && data[this.responseItemsName].length > 0) {
                 //this._prepareItems.call(this, direction, data);
-                var frag = this._prepareItems(data.response);
+                var frag = this._prepareItems(data[this.responseItemsName]);
                 // Render fragment with node tree
                 this._render(frag, direction);
 
             } else {
-                if (data.count >= 0 && data.response.length === 0 &&
+                if (data.count >= 0 && data[this.responseItemsName].length === 0 &&
                     (pageRequest > this.lastPage)) {
                     if (data.count === 0) {
                         this._showEmptyContentBox();

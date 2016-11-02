@@ -23,7 +23,8 @@
       <demo-snippet>
         <template>
           <poly-infinite-scroll id="infinite"
-            endpoint="data.json"
+            endpoint="http://localhost:3000/posts"
+            response-items-name="articles"
             params="{{params}}"
             upper-limit="300"
             lower-limit="300"
