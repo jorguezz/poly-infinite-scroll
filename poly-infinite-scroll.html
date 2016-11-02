@@ -301,8 +301,6 @@ Example:
                 return;
             }
 
-            if (this._isPageOffsetExcedded()) { return; }
-
             // Refresh with filters
             this._parseQueryString();
 
@@ -347,9 +345,7 @@ Example:
         },
 
         initialLoad: function(pageRequest) {
-            console.log('initial Load!');
             var self = this;
-            if (this._isPageOffsetExcedded()) { return; }
 
             this.$.mainspinner.classList.remove('hide');
 
@@ -561,8 +557,6 @@ Example:
             var self = this;
             this.upperPointer -= 1;
             var pageRequest = this.upperPointer;
-            if (this._isPageOffsetExcedded()) { return; }
-
 
             this.removeScrollSpyListener();
             this.fetch(pageRequest, 'up').then(function() {
@@ -586,7 +580,6 @@ Example:
             var self = this;
             this.lowerPointer += 1;
             var pageRequest = this.lowerPointer;
-            if (this._isPageOffsetExcedded()) { return; }
 
             this.fetch(pageRequest, 'down').then(function() {
                 self.originLowerPointer = pageRequest;
@@ -629,7 +622,7 @@ Example:
               cache: 'default',
               method: 'POST',
               headers: headers,
-              body: JSON.stringify(this._payload)
+              body: JSON.stringify(_payload)
             });
 
             return fetch(request).then(function(res) {
@@ -748,21 +741,6 @@ Example:
             if (!this._scrollSpyListener) {
                 this._scrollSpyListener = this._scrollTarget.addEventListener('scroll', this._trottledScrollSpyHandler);
             }
-        },
-
-        _isPageOffsetExcedded: function() {
-            // offset limit
-            if (this.page){
-                if (this._scrollTarget) {
-                    this.removeScrollListener();
-                    this.removeScrollSpyListener();
-                }
-                setTimeout(function() {
-                    // redirect('/error/nopages');
-                }, 100);
-                return true;
-            }
-            return false;
         },
 
         _itemClicked: function(e, item) {
