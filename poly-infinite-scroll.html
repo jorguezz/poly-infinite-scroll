@@ -59,8 +59,6 @@ Example:
 
       <div id="mainspinner" class="spinner hide"></div>
 
-      <content id="empty-response" select=".empty-response"></content>
-
       <ul id="list" class="layout horizontal wrap">
       </ul>
 
@@ -207,16 +205,16 @@ Example:
         },
 
         observers: [
-            'init(params, pageSize, upperLimit, lowerLimit, scrollTarget)',
-            'paramsQueryChanged(params.query)'
+            '_init(params, pageSize, upperLimit, lowerLimit, scrollTarget)',
+            '_paramsQueryChanged(params.query)'
         ],
 
         detached: function() {
             // Remove listener for any previous scroll target
             this._attached = false;
-            this.removeScrollListener();
-            this.removeScrollSpyListener();
-            this.$.prevpage.removeEventListener('click', this.handlerPrevClick);
+            this._removeScrollListener();
+            this._removeScrollSpyListener();
+            this.$.prevpage.removeEventListener('click', this._handlerPrevClick);
 
             this._resetItems();
             this.blocked = true;
@@ -225,21 +223,20 @@ Example:
 
         attached: function() {
             this._attached = true;
-            this.createInitialElements();
-            this.craeteScrollHandlers();
-            this._hideEmptyContentBox();
+            this._createInitialElements();
+            this._craeteScrollHandlers();
 
             // PrevPage click listener
-            this.$.prevpage.addEventListener('click', this.handlerPrevClick.bind(this));
+            this.$.prevpage.addEventListener('click', this._handlerPrevClick.bind(this));
         },
 
-        init: function() {
+        _init: function() {
             if (this._scrollListener) {
-                this.removeScrollListener();
+                this._removeScrollListener();
             }
 
             if (this._scrollSpyListener) {
-                this.removeScrollSpyListener();
+                this._removeScrollSpyListener();
             }
 
             this.observer = null;
@@ -278,13 +275,13 @@ Example:
             this.restored = false;
         },
 
-        createInitialElements: function() {
+        _createInitialElements: function() {
             this._scrollTarget = Polymer.dom(window).node;
             this._containerEl = Polymer.dom(this).node;
             this._list = this.$.list;
         },
 
-        craeteScrollHandlers: function() {
+        _craeteScrollHandlers: function() {
             if (!this._throttleBoundHandler) {
                 this._throttleBoundHandler = _.throttle(this.scroll.bind(this), 350);
             }
@@ -304,10 +301,10 @@ Example:
                 self.originLowerPointer = pageRequest;
                 //self.$.mainspinner.hide();
                 self.fire('page:loaded');
-                self.createInitialElements();
-                self.craeteScrollHandlers();
-                self.addScrollEventListener();
-                self.addScrollSpyListener();
+                self._createInitialElements();
+                self._craeteScrollHandlers();
+                self._addScrollEventListener();
+                self._addScrollSpyListener();
                 self._containerElOffsetTop = self._containerEl.offsetTop;
 
                 // Server pagination based 0 index
@@ -318,7 +315,7 @@ Example:
         /*
          * Handler params.query change and reset page pages and items
          */
-        paramsQueryChanged: function() {
+        _paramsQueryChanged: function() {
             this._setPointers(this.page);
             this._resetItems();
             this._domObserverDisconnect();
@@ -333,7 +330,7 @@ Example:
          * This way we can know when new node elements or "pages" are inserted to de Dom
          * Used to detect new page rendered after user click "show previus page" and go to prev page
          */
-        mutationObserve: function(cb) {
+        _mutationObserve: function(cb) {
             this.domObserver = new MutationObserver(cb);
 
             // Observe node page list
@@ -353,7 +350,7 @@ Example:
             return this.domObserver;
         },
 
-        addScrollEventListener: function() {
+        _addScrollEventListener: function() {
             // Add listener for new scroll target
             if (this._scrollTarget && !this._scrollListener && this._attached) {
                 this._scrollListener = this._scrollTarget.addEventListener('scroll', this._throttleBoundHandler);
@@ -371,10 +368,10 @@ Example:
             this.set('lastKnowScrollY', scrollY);
             this.lastKnowClientHeight = window.document.documentElement.clientHeight;
             this.lastKnowContainerClientHeight = this._containerEl.clientHeight;
-            this.requestTick();
+            this._requestTick();
         },
 
-        requestTick: function() {
+        _requestTick: function() {
             var self = this;
             if (!this.ticking) {
                 requestAnimationFrame(this._updateOnScroll.bind(self));
@@ -382,11 +379,9 @@ Example:
             }
         },
 
-        handlerPrevClick: function(e) {
+        _handlerPrevClick: function(e) {
             var self = this;
-            if (e) {
-                e.preventDefault();
-            }
+            if (e) { e.preventDefault(); }
             self._hidePreviousBtn();
             // Save position before click actions are triggered
             self.set('upperTriggered', true);
@@ -400,24 +395,6 @@ Example:
             if (this.prevBottomIsRendered) {
                 this.$.prevpage.classList.add('hide');
                 this.set('prevBottomIsRendered', false);
-            }
-        },
-
-        _hideEmptyContentBox: function() {
-            var emptyResponseContent = this.getContentChildren('#empty-response')[0];
-            if (emptyResponseContent && !emptyResponseContent.classList.contains('hide')) {
-                emptyResponseContent.classList.add('hide');
-                this.blocked = false;
-                this.addScrollEventListener();
-            }
-        },
-
-        _showEmptyContentBox: function() {
-            var emptyResponseContent = this.getContentChildren('#empty-response')[0];
-            if (emptyResponseContent && emptyResponseContent.classList.contains('hide')) {
-                emptyResponseContent.classList.remove('hide');
-                this.removeScrollListener();
-                this.blocked = true;
             }
         },
 
@@ -445,9 +422,9 @@ Example:
                 // Save scroll position before click actions are triggered
                 this._saveScrollPotition();
 
-                this.mutationObserve(this._mutationUpCb.bind(this));
+                this._mutationObserve(this._mutationUpCb.bind(this));
 
-                this.removeScrollListener();
+                this._removeScrollListener();
 
                 this.prevPage(function(err) {
                     self._clearUpper();
@@ -457,7 +434,7 @@ Example:
 
                     // Fix safari invalid scrollY on render prepend items
                     setTimeout(function() {
-                        self.addScrollEventListener();
+                        self._addScrollEventListener();
                         //this.lastKnowScrollY = self._scrollTarget.scrollY;
                     }, 50);
                 });
@@ -469,7 +446,7 @@ Example:
                     this.$.nextspinner.classList.remove('hide');
                 }
 
-                this.mutationObserve(this._mutationDownCb.bind(this));
+                this._mutationObserve(this._mutationDownCb.bind(this));
 
                 this.nextPage(function(err) {
                     self._clearLower();
@@ -490,7 +467,7 @@ Example:
             this.upperPointer -= 1;
             var pageRequest = this.upperPointer;
 
-            this.removeScrollSpyListener();
+            this._removeScrollSpyListener();
             this.fetch(pageRequest, 'up').then(function() {
                 self.originUpperPointer = pageRequest;
                 cb();
@@ -533,10 +510,11 @@ Example:
          * @return Promise
          */
         fetch: function(pageRequest, direction) {
+            var self = this;
+            
             if (!this.params) {
                 return Promise.resolve({});
             }
-            var self = this;
             this.blocked = true;
 
             var _payload = {
@@ -557,33 +535,33 @@ Example:
               body: JSON.stringify(_payload)
             });
 
-            return fetch(request).then(function(res) {
-                if(res.ok){
+            return fetch(request)
+            .then(function(res) {
+                if(res.ok) {
                     return res.json().then(function(data) {
                         if (!data) { return; }
                         self.page = pageRequest;
 
                         // First initial observer
                         if (!self.domObserver) {
-                            self.mutationObserve(self._mutationDownCb.bind(self));
+                            self._mutationObserve(self._mutationDownCb.bind(self));
                         }
 
-                        self.onSuccess.call(self, data, pageRequest, direction);
+                        self._onSuccess(data, pageRequest, direction);
                     }).catch(function(err) {
                         console.log(err);
                     });
                 }
-                 
             }).catch(function(err) {
                 self.blocked = false;
-                self.onErrors.call(self, err, direction);
+                self._onErrors(err, direction);
             });
         },
 
         /*
          * Success cb is called when data is fetched
          */
-        onSuccess: function(data, pageRequest, direction) {
+        _onSuccess: function(data, pageRequest, direction) {
             if (data && data.count) {
                 this.setLastPage(data.count);
             }
@@ -602,7 +580,7 @@ Example:
                 if (data.count >= 0 && data[this.responseProp].length === 0 &&
                     (pageRequest > this.lastPage)) {
                     if (data.count === 0) {
-                        this._showEmptyContentBox();
+                        //this._showEmptyContentBox();
                     } else {
                         // redirect /error/nopages
                     }
@@ -620,7 +598,7 @@ Example:
         /*
          * Error cb is called when data is fetched
          */
-        onErrors: function(err, direction) {
+        _onErrors: function(err, direction) {
             if (direction === 'up') {
                 this.$.prevspinner.classList.remove('hide');
             } else if (direction === 'down') {
@@ -659,17 +637,17 @@ Example:
             });
         },
 
-        removeScrollListener: function() {
+        _removeScrollListener: function() {
             this._scrollTarget.removeEventListener('scroll', this._throttleBoundHandler);
             this._scrollListener = null;
         },
 
-        removeScrollSpyListener: function() {
+        _removeScrollSpyListener: function() {
             this._scrollTarget.removeEventListener('scroll', this._trottledScrollSpyHandler);
             this._scrollSpyListener = null;
         },
 
-        addScrollSpyListener: function() {
+        _addScrollSpyListener: function() {
             if (!this._scrollSpyListener) {
                 this._scrollSpyListener = this._scrollTarget.addEventListener('scroll', this._trottledScrollSpyHandler);
             }
@@ -727,10 +705,10 @@ Example:
             // update all position offsets
             this._resetAllOffsets();
             // Restore scroll position
-            this.removeScrollListener();
+            this._removeScrollListener();
             this._restoreScrollPosition();
             this._domObserverDisconnect();
-            this.addScrollSpyListener();
+            this._addScrollSpyListener();
             this.restored = true;
         },
 
@@ -1046,7 +1024,6 @@ Example:
             _.each(params, function(value, key) {
                 params[key] = value.split(',');
             });
-
             return params;
         },
 
