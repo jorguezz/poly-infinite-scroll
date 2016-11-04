@@ -198,6 +198,11 @@ Example:
             responseProp: {
                 type: String,
                 value: ''
+            },
+
+            wrapperItemEl: {
+                type: String,
+                value: 'li'
             }
         },
 
@@ -742,7 +747,7 @@ Example:
             var node = mutations[0].addedNodes[0];
 
             var nodeParsed = node.nodeName && node.nodeName.toLowerCase ? node.nodeName.toLowerCase() : null;
-            if (nodeParsed === 'li') {
+            if (nodeParsed === this.wrapperItemEl) {
                 Polymer.dom(node).setAttribute('pageRef', self.page + 1);
             }
 
@@ -772,7 +777,7 @@ Example:
         _resetAllOffsets: function() {
             var self = this;
 
-            var pageGroups = Polymer.dom(this._list).querySelectorAll('li[pageRef]');
+            var pageGroups = Polymer.dom(this._list).querySelectorAll(this.wrapperItemEl + '[pageRef]');
 
             this.set('offsetArr', []);
             _.map(pageGroups, function(page) {
@@ -918,7 +923,7 @@ Example:
             _instance = document.createElement(this.element);
 
             // Create list item
-            _item = document.createElement('li');
+            _item = document.createElement(this.wrapperItemEl);
             _instance.item = item;
             Polymer.dom(_item).classList.add(this.elementClass);
             Polymer.dom(_item).appendChild(_instance);
