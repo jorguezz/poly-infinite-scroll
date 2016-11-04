@@ -146,11 +146,6 @@ Example:
                 value: 1
             },
 
-            scrollSpy: {
-                type: Boolean,
-                value: true
-            },
-
             element: {
                 type: String
             },
@@ -205,8 +200,7 @@ Example:
         },
 
         observers: [
-            '_init(params, pageSize, upperLimit, lowerLimit, scrollTarget)',
-            '_paramsQueryChanged(params.query)'
+            '_init(params, pageSize, upperLimit, lowerLimit, scrollTarget)'
         ],
 
         detached: function() {
@@ -218,7 +212,6 @@ Example:
 
             this._resetItems();
             this.blocked = true;
-            this.observer = null;
         },
 
         attached: function() {
@@ -238,8 +231,6 @@ Example:
             if (this._scrollSpyListener) {
                 this._removeScrollSpyListener();
             }
-
-            this.observer = null;
 
             this._resetItems();
 
@@ -270,9 +261,10 @@ Example:
 
             // last valid upperPointer
             this.originUpperPointer = this.originLowerPointer = 1;
-            //this.pageSize = window.bowser.ios && window.bowser.version < 9 ? 24 : this.pageSize;
             this.blocked = false;
             this.restored = false;
+
+            this.initialLoad(this.page);
         },
 
         _createInitialElements: function() {
@@ -575,18 +567,11 @@ Example:
                 var frag = this._prepareItems(data[this.responseProp]);
                 // Render fragment with node tree
                 this._render(frag, direction);
-
             } else {
-                if (data.count >= 0 && data[this.responseProp].length === 0 &&
-                    (pageRequest > this.lastPage)) {
-                    if (data.count === 0) {
-                        //this._showEmptyContentBox();
-                    } else {
-                        // redirect /error/nopages
-                    }
-                } else if (!data.count) {
+                // No results
+                if (data.count >= 0 && data[this.responseProp].length === 0 && (pageRequest > this.lastPage)) {
                     this._hidePreviousBtn();
-                }
+                } 
             }
 
             // Block Scroll down if lastpage was fetched
@@ -616,7 +601,7 @@ Example:
         goLastPage: function() {
             var self = this;
             this.set('upperPointer', this.lastPage);
-            this.fetch(this.lastPage).then(function() {
+            return this.fetch(this.lastPage).then(function() {
                 self.updateQueryString(self.lastPage + 1);
             }).catch(function() {
                 //console.log(err);
@@ -905,7 +890,6 @@ Example:
             _instance.item = item;
             Polymer.dom(_item).classList.add(this.elementClass);
             Polymer.dom(_item).appendChild(_instance);
-
             return _item;
         },
 
@@ -952,7 +936,6 @@ Example:
             if (window.document.body.scrollHeight < window.document.documentElement.scrollHeight) {
                 _target = window.document.documentElement;
             }
-
             this.previousScrollHeightMinusTop = _target.scrollHeight - _target.scrollTop;
         },
 
