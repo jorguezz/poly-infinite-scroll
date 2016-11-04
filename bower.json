@@ -1,6 +1,13 @@
 {
   "name": "poly-infinite-scroll",
+  "version": "1.0.0",
   "main": "poly-infinite-scroll.html",
+  "keywords": [
+    "polymer",
+    "web-components",
+    "infinite-scroll",
+    "poly-infinite-scroll"
+  ],
   "dependencies": {
     "polymer": "Polymer/polymer#^1.4.0",
     "lodash": "^4.16.4"
