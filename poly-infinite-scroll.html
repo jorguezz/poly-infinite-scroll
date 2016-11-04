@@ -5,18 +5,15 @@
 Example:
 
     <poly-infinite-scroll id="infinite"
-            endpoint="http://localhost:3000/posts"
-            response-items-name="articles"
-            params="{{params}}"
-            upper-limit="300"
-            lower-limit="300"
-            page-size="12"
-            items="[[data]]"
-            pages="{{pages}}"
-            element="my-item"
-            element-class="custom__elem"
-            spy-element-list="my-item">
-          </poly-infinite-scroll>
+        endpoint="http://localhost:3000/posts"
+        response-prop="articles"
+        params="{{params}}"
+        upper-limit="300"
+        lower-limit="300"
+        page-size="12"
+        element="my-item"
+        element-class="customelem">
+      </poly-infinite-scroll>
 
 @demo demo/index.html 
 -->
@@ -48,10 +45,6 @@ Example:
           top: -2px;
           width: 20px;
           position: relative;
-      }
-
-      .show_previous_page a {
-          color: var(--default-primary-color);
       }
     </style>
 
@@ -106,14 +99,6 @@ Example:
             },
 
             /**
-             * Key name to change queryParam
-             */
-            pageStr: {
-                type: String,
-                value: 'page'
-            },
-
-            /**
              * Distance from the top bound of the scroller
              * where the "upper trigger" will fire.
              */
@@ -163,16 +148,6 @@ Example:
                 value: 1
             },
 
-            /**
-             * An array container items determining how many instances of the template
-             * to stamp and that that each template instance should bind to.
-             */
-            items: {
-                type: Array,
-                notify: true,
-                value: []
-            },
-
             scrollSpy: {
                 type: Boolean,
                 value: true
@@ -184,14 +159,6 @@ Example:
 
             elementClass: {
                 type: String
-            },
-
-            /*
-             * Save page groups node elements to optimize page seach on spy
-             */
-            pageGroups: {
-                type: Array,
-                value: []
             },
 
             isLastPage: {
@@ -228,14 +195,10 @@ Example:
                 value: ''
             },
 
-            responseItemsName: {
+            responseProp: {
                 type: String,
                 value: ''
             }
-        },
-
-        listeners: {
-            'item:clicked': '_itemClicked'
         },
 
         observers: [
@@ -624,14 +587,14 @@ Example:
             pageRequest += 1;
             this.blocked = false;
             // data received successfully
-            if (data[this.responseItemsName] && data[this.responseItemsName].length > 0) {
+            if (data[this.responseProp] && data[this.responseProp].length > 0) {
                 //this._prepareItems.call(this, direction, data);
-                var frag = this._prepareItems(data[this.responseItemsName]);
+                var frag = this._prepareItems(data[this.responseProp]);
                 // Render fragment with node tree
                 this._render(frag, direction);
 
             } else {
-                if (data.count >= 0 && data[this.responseItemsName].length === 0 &&
+                if (data.count >= 0 && data[this.responseProp].length === 0 &&
                     (pageRequest > this.lastPage)) {
                     if (data.count === 0) {
                         this._showEmptyContentBox();
@@ -704,28 +667,6 @@ Example:
         addScrollSpyListener: function() {
             if (!this._scrollSpyListener) {
                 this._scrollSpyListener = this._scrollTarget.addEventListener('scroll', this._trottledScrollSpyHandler);
-            }
-        },
-
-        _itemClicked: function(e, item) {
-            var ref,
-                i = 0;
-
-            if(item && item.parentElement){
-                item = item.parentElement;
-            }
-
-            while(!ref && i < this.pageSize) {
-                if(item.attributes && item.attributes.pageref) {
-                    ref = item.attributes.pageref.value;
-                }
-
-                item = item.previousSibling;
-                i++;
-            }
-
-            if(ref){
-                this.updateQueryString(ref);
             }
         },
 

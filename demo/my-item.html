@@ -5,16 +5,40 @@
     <style>
       :host {
           display: block;
+          height: 100px;
+          padding-right: 10px;
+          background-color: #FFF;
+          margin-top: 10px;
+
+          -webkit-box-shadow: 1px 1px 5px 0px rgba(0,0,0,0.45);
+          -moz-box-shadow: 1px 1px 5px 0px rgba(0,0,0,0.45);
+          box-shadow: 1px 1px 5px 0px rgba(0,0,0,0.45);
       }
-      .list__item {
-        padding: 10px 0 10px 0;
-        background-color: 
+      :host:before{
+          content: "";
+          line-height: 1em;
+          width: 5px;
+          height: 100px;
+          float: left;
+          background-color: #0080FF;
       }
+      .list__item {}
+      .list__item img {
+        margin: 0 10px 0 0;
+        height: 100px;
+        float:left;
+      }
+      .list__item p {
+        margin: 0;
+        padding-top: 10px;
+        height: 100px;
+      }
+
     </style>
 
     <div class="list__item">
-      <p>{{item.name}}</p>
-      <p>{{item.price}}</p>
+      <img width="100px" height="100px" src="http://placehold.it/100x100" />
+      <p>{{item.description}}</p>
     </div>
   </template>
 
