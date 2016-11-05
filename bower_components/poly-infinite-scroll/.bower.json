@@ -1,0 +1,31 @@
+{
+  "name": "poly-infinite-scroll",
+  "version": "1.0.0",
+  "main": "poly-infinite-scroll.html",
+  "keywords": [
+    "polymer",
+    "web-components",
+    "infinite-scroll",
+    "poly-infinite-scroll"
+  ],
+  "dependencies": {
+    "polymer": "Polymer/polymer#^1.4.0",
+    "lodash": "^4.16.4"
+  },
+  "devDependencies": {
+    "iron-component-page": "PolymerElements/iron-component-page#^1.0.0",
+    "iron-demo-helpers": "PolymerElements/iron-demo-helpers#^1.0.0",
+    "web-component-tester": "^4.0.0",
+    "webcomponentsjs": "webcomponents/webcomponentsjs#^0.7.0"
+  },
+  "homepage": "https://github.com/jorguezz/poly-infinite-scroll",
+  "_release": "1.0.0",
+  "_resolution": {
+    "type": "version",
+    "tag": "1.0.0",
+    "commit": "f9faf744363eb041221254c0884067b8f0f4872b"
+  },
+  "_source": "https://github.com/jorguezz/poly-infinite-scroll.git",
+  "_target": "1.0.0",
+  "_originalSource": "poly-infinite-scroll"
+}

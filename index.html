@@ -8,6 +8,8 @@
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
     <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
     <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+    <link rel="import" href="bower_components/poly-infinite-scroll/demo/my-item.html">
+    <link rel="import" href="bower_components/poly-infinite-scroll/poly-infinite-scroll.html">
   </head>
   <body>
     <section class="page-header">
@@ -19,8 +21,17 @@
     </section>
 
     <section class="main-content">
-      <h3><poly-infinite-scroll></h3>
 
+      <poly-infinite-scroll id="infinite"
+        endpoint="https://poly-infinite-scroll-server.herokuapp.com/posts"
+        response-prop="articles"
+        params="{{params}}"
+        upper-limit="300"
+        lower-limit="300"
+        page-size="12"
+        element="my-item"
+        element-class="custom--elem">
+      </poly-infinite-scroll>
 
       <footer class="site-footer">
         <span class="site-footer-owner"><a href="https://github.com/jorguezz/poly-infinite-scroll">Poly-infinite-scroll</a> is maintained by <a href="https://github.com/jorguezz">jorguezz</a>.</span>
