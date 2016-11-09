@@ -48,7 +48,7 @@ Example:
       }
     </style>
 
-    <div id="prevspinner" class="spinner hide"></div>
+     <!--<div id="prevspinner" class="spinner hide"></div>-->
 
       <p class="show_previous_page">
           <a href="#" id="prevpage" class="hide">
@@ -57,12 +57,11 @@ Example:
           </a>
       </p>
 
-      <div id="mainspinner" class="spinner hide"></div>
+      <!--<my-spinner id="mainspinner" class="spinner hide"></my-spinner>-->
 
-      <ul id="list" class="layout horizontal wrap">
-      </ul>
+      <ul id="list" class="layout horizontal wrap"></ul>
 
-      <div id="nextspinner" class="spinner hide"></div>
+      <!--<div id="nextspinner" class="spinner hide"></div>-->
 
   </template>
 
@@ -196,6 +195,11 @@ Example:
             wrapperItemEl: {
                 type: String,
                 value: 'li'
+            },
+
+            spinner: {
+                type: String,
+                value: ''
             }
         },
 
@@ -218,12 +222,15 @@ Example:
             this._attached = true;
             this._createInitialElements();
             this._craeteScrollHandlers();
-
             // PrevPage click listener
             this.$.prevpage.addEventListener('click', this._handlerPrevClick.bind(this));
         },
 
         _init: function() {
+            if(this.spinner) {
+                this._createSpinnerEl();
+            }
+
             if (this._scrollListener) {
                 this._removeScrollListener();
             }
@@ -267,6 +274,15 @@ Example:
             this.initialLoad(this.page);
         },
 
+        _createSpinnerEl: function() {
+            this._idSpinner = 'mainspinner';
+            var _item = document.createElement(this.spinner);
+            Polymer.dom(_item).setAttribute('id', this._idSpinner);
+            Polymer.dom(_item).classList.add('hide');
+            Polymer.dom(this.root).appendChild(_item);
+            this.spinnerEl = this.$$('#'+this._idSpinner);
+        },
+
         _createInitialElements: function() {
             this._scrollTarget = Polymer.dom(window).node;
             this._containerEl = Polymer.dom(this).node;
@@ -283,15 +299,26 @@ Example:
             }
         },
 
+        _showSpinner: function() {
+            if(this.spinnerEl){
+                this.spinnerEl.classList.remove('hide');
+            }
+        },
+
+        _hideSpinner: function() {
+            if(this.spinnerEl){
+                this.spinnerEl.classList.add('hide');
+            }
+        },
+
         initialLoad: function(pageRequest) {
             var self = this;
 
-            this.$.mainspinner.classList.remove('hide');
+            this._showSpinner();
 
             this.fetch(pageRequest).then(function() {
-                self.$.mainspinner.classList.add('hide');
+                self._hideSpinner();
                 self.originLowerPointer = pageRequest;
-                //self.$.mainspinner.hide();
                 self.fire('page:loaded');
                 self._createInitialElements();
                 self._craeteScrollHandlers();
@@ -406,10 +433,10 @@ Example:
          */
         loadMore: function() {
             var self = this;
+            this._showSpinner();
 
             // UP
             if (this.upperTriggered) {
-                this.$.prevspinner.classList.remove('hide');
 
                 // Save scroll position before click actions are triggered
                 this._saveScrollPotition();
@@ -419,9 +446,9 @@ Example:
                 this._removeScrollListener();
 
                 this.prevPage(function(err) {
-                    self._clearUpper();
+                    self._clear('up');
                     if (!err) {
-                        self.$.prevspinner.classList.remove('hide');
+                        self._showSpinner();
                     }
 
                     // Fix safari invalid scrollY on render prepend items
@@ -434,16 +461,13 @@ Example:
 
             // DOWN
             if (this.lowerTriggered) {
-                if (this.$.mainspinner.classList.contains('hide')) {
-                    this.$.nextspinner.classList.remove('hide');
-                }
 
                 this._mutationObserve(this._mutationDownCb.bind(this));
 
                 this.nextPage(function(err) {
-                    self._clearLower();
+                    self._clear('down');
                     if (!err) {
-                        self.$.nextspinner.classList.remove('hide');
+                        self._showSpinner();
                     }
                 });
             }
@@ -584,11 +608,7 @@ Example:
          * Error cb is called when data is fetched
          */
         _onErrors: function(err, direction) {
-            if (direction === 'up') {
-                this.$.prevspinner.classList.remove('hide');
-            } else if (direction === 'down') {
-                this.$.nextspinner.classList.remove('hide');
-            }
+            this._showSpinner();
             throw err;
         },
 
@@ -838,26 +858,15 @@ Example:
         },
 
         /**
-         * Clear the upper limit, following an `upper-trigger` event.
-         * @method clearUpper
+         * Clear the lower/upper limit, following a `upper/lower-trigger` event.
+         * @method clear
          */
-        _clearUpper: function() {
+        _clear: function(dir) {
             var self = this;
             this.async(function() {
-                self.set('upperTriggered', false);
-                self.$.prevspinner.classList.add('hide');
-            });
-        },
-
-        /**
-         * Clear the lower limit, following a `lower-trigger` event.
-         * @method clearLower
-         */
-        _clearLower: function() {
-            var self = this;
-            this.async(function() {
-                self.set('lowerTriggered', false);
-                self.$.nextspinner.classList.add('hide');
+                var trigger = dir === 'up' ? 'upperTriggered' : 'lowerTriggered';
+                self.set(trigger, false);
+                self._hideSpinner();
             });
         },
 
