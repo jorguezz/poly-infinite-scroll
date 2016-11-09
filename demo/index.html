@@ -5,12 +5,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1, user-scalable=yes">
     <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
-    <script src="../../lodash/dist/lodash.min.js"></script>
+    <script src="../../lodash/lodash.min.js"></script>
 
     <link rel="import" href="../../iron-demo-helpers/demo-pages-shared-styles.html">
     <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
 
     <link rel="import" href="./my-item.html">
+    <link rel="import" href="./my-spinner.html">
     <link rel="import" href="../poly-infinite-scroll.html">
 
     <style is="custom-style" include="demo-pages-shared-styles">
@@ -25,6 +26,7 @@
         upper-limit="300"
         lower-limit="300"
         page-size="12"
+        spinner="my-spinner"
         element="my-item"
         element-class="custom--elem">
       </poly-infinite-scroll>
