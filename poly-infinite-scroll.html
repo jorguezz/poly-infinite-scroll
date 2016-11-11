@@ -12,6 +12,7 @@ Example:
         lower-limit="300"
         page-size="12"
         element="my-item"
+        spinner="my-spinner"
         element-class="customelem">
       </poly-infinite-scroll>
 
@@ -241,21 +242,14 @@ Example:
 
             this._resetItems();
 
-            this._hidePreviousBtn();
-
             // Get pageFromUrl on init or default page value
             this.page = this._getPageFromUrl(); // 0 index
 
             // Refresh with filters
-            this._parseQueryString();
+            //this._parseQueryString();
 
             // Set upper and lower pointers 0 index based
             this._setPointers(this.page);
-
-            if (this.page >= 1 && this.upperLimit) {
-                // show link "show previus page"
-                this._showBeforePageLink();
-            }
 
             // Clear trigger state if user has cleared the limit
             if (!this.upperLimit) {
@@ -313,7 +307,6 @@ Example:
 
         initialLoad: function(pageRequest) {
             var self = this;
-
             this._showSpinner();
 
             this.fetch(pageRequest).then(function() {
@@ -325,9 +318,16 @@ Example:
                 self._addScrollEventListener();
                 self._addScrollSpyListener();
                 self._containerElOffsetTop = self._containerEl.offsetTop;
-
                 // Server pagination based 0 index
                 self.updateQueryString(pageRequest + 1);
+                
+                if (pageRequest >= 1 && self.upperLimit && self.lastPage >= pageRequest+1 ) {
+                    self._showBeforePageLink();
+                }
+
+                if(pageRequest+1 > self.lastPage) {
+                    self.goToLastPage();
+                }
             });
         },
 
@@ -381,8 +381,7 @@ Example:
          * Trigger
          */
         scroll: function() {
-            var self = this,
-                scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
+            var scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
 
             this.set('lastKnowScrollY', scrollY);
             this.lastKnowClientHeight = window.document.documentElement.clientHeight;
@@ -391,19 +390,17 @@ Example:
         },
 
         _requestTick: function() {
-            var self = this;
             if (!this.ticking) {
-                requestAnimationFrame(this._updateOnScroll.bind(self));
+                requestAnimationFrame(this._updateOnScroll.bind(this));
                 this.set('ticking', true);
             }
         },
 
         _handlerPrevClick: function(e) {
-            var self = this;
             if (e) { e.preventDefault(); }
-            self._hidePreviousBtn();
+            this._hidePreviousBtn();
             // Save position before click actions are triggered
-            self.set('upperTriggered', true);
+            this.set('upperTriggered', true);
         },
 
         /*
@@ -438,7 +435,6 @@ Example:
             // UP
             if (this.upperTriggered) {
 
-                // Save scroll position before click actions are triggered
                 this._saveScrollPotition();
 
                 this._mutationObserve(this._mutationUpCb.bind(this));
@@ -446,11 +442,7 @@ Example:
                 this._removeScrollListener();
 
                 this.prevPage(function(err) {
-                    self._clear('up');
-                    if (!err) {
-                        self._showSpinner();
-                    }
-
+                    self._onTriggerPageCb(err, 'up');
                     // Fix safari invalid scrollY on render prepend items
                     setTimeout(function() {
                         self._addScrollEventListener();
@@ -461,22 +453,23 @@ Example:
 
             // DOWN
             if (this.lowerTriggered) {
-
                 this._mutationObserve(this._mutationDownCb.bind(this));
-
+                
                 this.nextPage(function(err) {
-                    self._clear('down');
-                    if (!err) {
-                        self._showSpinner();
-                    }
+                    self._onTriggerPageCb(err, 'down');
                 });
             }
         },
 
+        _onTriggerPageCb: function(err, dir) {
+            this._clear(dir);
+            if (!err) {
+                this._showSpinner();
+            }
+        },
+
         /*
-         * Set new upperPointer and pageRequest, send request,
-         * set response data to items array and set response data to pages group
-         * finally update url with new page load
+         * Set new upperPointer and pageRequest
          */
         prevPage: function(cb) {
             var self = this;
@@ -497,9 +490,7 @@ Example:
         },
 
         /*
-         * Set new lowerPointer and pageRequest, send request,
-         * set response data to items array and set response data to pages group
-         * finally update url with new page load
+         * Set new lowerPointer and pageRequest
          */
         nextPage: function(cb) {
             var self = this;
@@ -516,11 +507,12 @@ Example:
                 self.lowerPointer = self.originLowerPointer;
                 cb(err);
             });
-
         },
 
+
+
         /**
-         * Send request using corbel-connect
+         * fetch data 
          * @param  String|Number pageRequest
          * @param  String direction Optional direction up|down
          * @return Promise
@@ -551,8 +543,7 @@ Example:
               body: JSON.stringify(_payload)
             });
 
-            return fetch(request)
-            .then(function(res) {
+            return fetch(request).then(function(res) {
                 if(res.ok) {
                     return res.json().then(function(data) {
                         if (!data) { return; }
@@ -613,18 +604,15 @@ Example:
         },
 
         /*
-         * Deprecated
          * Page doesn't exist
          * Ej: ?page=999
          * Go to lastPage and update url
          */
-        goLastPage: function() {
+        goToLastPage: function() {
             var self = this;
             this.set('upperPointer', this.lastPage);
-            return this.fetch(this.lastPage).then(function() {
-                self.updateQueryString(self.lastPage + 1);
-            }).catch(function() {
-                //console.log(err);
+            return this.fetch(this.lastPage-1).then(function() {
+                self.updateQueryString(self.lastPage);
             });
         },
 
@@ -670,7 +658,6 @@ Example:
 
         _cleanElements: function() {
             if (this._list) {
-                //this._list.innerHTML = '';
                 while (Polymer.dom(this._list).firstChild) {
                     Polymer.dom(this._list).removeChild(Polymer.dom(this._list).firstChild);
                 }
@@ -733,7 +720,6 @@ Example:
             if (nodeParsed === this.wrapperItemEl) {
                 Polymer.dom(node).setAttribute('pageRef', self.page + 1);
             }
-
             return node;
         },
 
@@ -741,19 +727,13 @@ Example:
          * OffsetTop cache to spy on scroll
          */
         _addOffset: function(node) {
-            var self = this;
-
-            if (!node) {
-                return;
-            }
-
+            if (!node) { return; }
             var offsetTop = node.offsetTop;
 
-            self.offsetArr.push({
-                page: self.page + 1,
+            this.offsetArr.push({
+                page: this.page + 1,
                 offset: offsetTop // force layout
             });
-
         },
 
         // Reset all OffsetTop on load previus page
@@ -1083,7 +1063,6 @@ Example:
 
                 url = urlparts[0] + '?' + pars.join('&');
             }
-
             return url;
         }
 
