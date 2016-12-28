@@ -212,12 +212,10 @@ class PolyInfiniteScroll extends Polymer.Element {
 
   constructor() {
     super();
-    console.log('created');
   }
 
   disconnectedCallback(){
     super.disconnectedCallback();
-    console.log('detached');
     // Remove listener for any previous scroll target
     this._attached = false;
     this._removeScrollListener();
@@ -230,7 +228,6 @@ class PolyInfiniteScroll extends Polymer.Element {
 
   connectedCallback() {
     super.connectedCallback();
-    console.log('attached');
     this._attached = true;
     this._createInitialElements();
     this._craeteScrollHandlers();
@@ -240,7 +237,6 @@ class PolyInfiniteScroll extends Polymer.Element {
 
   ready(){
     super.ready();
-    console.log('ready');
   }
 
   _init() {
@@ -291,7 +287,7 @@ class PolyInfiniteScroll extends Polymer.Element {
     Polymer.dom(_item).setAttribute('id', this._idSpinner);
     Polymer.dom(_item).classList.add('hide');
     Polymer.dom(this.root).appendChild(_item);
-    this.spinnerEl = this.$$('#'+this._idSpinner);
+    this.spinnerEl = document.getElementById(this._idSpinner);
   }
 
   _createInitialElements() {
@@ -329,7 +325,7 @@ class PolyInfiniteScroll extends Polymer.Element {
     .then(() => {
       this._hideSpinner();
       this.originLowerPointer = pageRequest;
-      this.fire('page:loaded');
+      //this.fire('page:loaded');
       this._createInitialElements();
       this._craeteScrollHandlers();
       this._addScrollEventListener();
@@ -838,11 +834,9 @@ class PolyInfiniteScroll extends Polymer.Element {
    * @method clear
    */
   _clear(dir) {
-    this.async(() => {
-      var trigger = dir === 'up' ? 'upperTriggered' : 'lowerTriggered';
-      this.set(trigger, false);
-      this._hideSpinner();
-    });
+    var trigger = dir === 'up' ? 'upperTriggered' : 'lowerTriggered';
+    this.set(trigger, false);
+    this._hideSpinner();
   }
 
   /*
