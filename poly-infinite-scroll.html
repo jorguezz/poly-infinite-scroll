@@ -1,4 +1,4 @@
-<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../polymer/polymer-element.html">
 
 <!--
 `poly-infinite-scroll`
@@ -16,1056 +16,1048 @@ Example:
         element-class="customelem">
       </poly-infinite-scroll>
 
-@demo demo/index.html 
+@demo demo/index.html
 -->
 
 <dom-module id="poly-infinite-scroll">
-  <template>
-    <style>
-      :host {
-          display: block;
-      }
-
-      ul {
-        list-style: none;
-        padding:0;
-        margin:0;
-      }
-
-      .hide {
-        display:none;
-      }
-
-      .show_previous_page {
-          text-align: center;
-          margin: 1.5rem 0;
-          clear: both;
-      }
-
-      .show_previous_page iron-icon {
-          top: -2px;
-          width: 20px;
-          position: relative;
-      }
-    </style>
-
-     <!--<div id="prevspinner" class="spinner hide"></div>-->
-
-      <p class="show_previous_page">
-          <a href="#" id="prevpage" class="hide">
-              <iron-icon icon="settings-backup-restore"></iron-icon>
-              <span>Show previous</span>
-          </a>
-      </p>
-
-      <!--<my-spinner id="mainspinner" class="spinner hide"></my-spinner>-->
-
-      <ul id="list" class="layout horizontal wrap"></ul>
-
-      <!--<div id="nextspinner" class="spinner hide"></div>-->
-
-  </template>
-
-  <script>
-    Polymer({
-        is: 'poly-infinite-scroll',
-
-        properties: {
-            /**
-             * When set, the given element is observed for scroll position
-             */
-            scrollTarget: {
-                type: Object,
-                value: null
-            },
-
-            /**
-             * Default page number
-             */
-            page: {
-                type: Number,
-                notify: true,
-                value: 0
-            },
-
-            /**
-             * Default pageSize to paginate
-             */
-            pageSize: {
-                type: Number,
-                value: 12
-            },
-
-            /**
-             * Distance from the top bound of the scroller
-             * where the "upper trigger" will fire.
-             */
-            upperLimit: {
-                type: Number,
-                value: 0
-            },
-
-            /**
-             * Distance from the bottom bound of the scroller
-             * where the "lower trigger" will fire.
-             */
-            lowerLimit: {
-                type: Number,
-                value: 0
-            },
-
-            /**
-             * Value that tracks the triggered state of the upper bound
-             */
-            upperTriggered: {
-                type: Boolean,
-                value: false,
-                notify: true,
-                observer: 'triggeredChanged'
-            },
-
-            /**
-             * Value that tracks the triggered state of the lower bound
-             */
-            lowerTriggered: {
-                type: Boolean,
-                value: false,
-                notify: true,
-                observer: 'triggeredChanged'
-            },
-
-            // Track previous pages loaded
-            upperPointer: {
-                type: Number,
-                value: 1
-            },
-
-            // Track next pages loaded
-            lowerPointer: {
-                type: Number,
-                value: 1
-            },
-
-            element: {
-                type: String
-            },
-
-            elementClass: {
-                type: String
-            },
-
-            isLastPage: {
-                type: Boolean,
-                value: false
-            },
-
-            lastPage: {
-                type: Number
-            },
-
-            params: {
-                type: Object,
-                notify: true
-            },
-
-            offsetArr: {
-                type: Array,
-                value: []
-            },
-
-            lastKnowScrollY: {
-                type: Number,
-                value: 1
-            },
-
-            ticking: {
-                type: Boolean,
-                value: false
-            },
-
-            endpoint: {
-                type: String,
-                value: ''
-            },
-
-            responseProp: {
-                type: String,
-                value: ''
-            },
-
-            wrapperItemEl: {
-                type: String,
-                value: 'li'
-            },
-
-            spinner: {
-                type: String,
-                value: ''
-            }
-        },
-
-        observers: [
-            '_init(params, pageSize, upperLimit, lowerLimit, scrollTarget)'
-        ],
-
-        detached: function() {
-            // Remove listener for any previous scroll target
-            this._attached = false;
-            this._removeScrollListener();
-            this._removeScrollSpyListener();
-            this.$.prevpage.removeEventListener('click', this._handlerPrevClick);
-
-            this._resetItems();
-            this.blocked = true;
-        },
-
-        attached: function() {
-            this._attached = true;
-            this._createInitialElements();
-            this._craeteScrollHandlers();
-            // PrevPage click listener
-            this.$.prevpage.addEventListener('click', this._handlerPrevClick.bind(this));
-        },
-
-        _init: function() {
-            if(this.spinner) {
-                this._createSpinnerEl();
-            }
-
-            if (this._scrollListener) {
-                this._removeScrollListener();
-            }
-
-            if (this._scrollSpyListener) {
-                this._removeScrollSpyListener();
-            }
-
-            this._resetItems();
-
-            // Get pageFromUrl on init or default page value
-            this.page = this._getPageFromUrl(); // 0 index
-
-            // Refresh with filters
-            //this._parseQueryString();
-
-            // Set upper and lower pointers 0 index based
-            this._setPointers(this.page);
-
-            // Clear trigger state if user has cleared the limit
-            if (!this.upperLimit) {
-                this.set('upperTriggered', false);
-            }
-
-            if (!this.lowerLimit) {
-                this.set('lowerTriggered', false);
-            }
-
-            // last valid upperPointer
-            this.originUpperPointer = this.originLowerPointer = 1;
-            this.blocked = false;
-            this.restored = false;
-
-            this.initialLoad(this.page);
-        },
-
-        _createSpinnerEl: function() {
-            this._idSpinner = 'mainspinner';
-            var _item = document.createElement(this.spinner);
-            Polymer.dom(_item).setAttribute('id', this._idSpinner);
-            Polymer.dom(_item).classList.add('hide');
-            Polymer.dom(this.root).appendChild(_item);
-            this.spinnerEl = this.$$('#'+this._idSpinner);
-        },
-
-        _createInitialElements: function() {
-            this._scrollTarget = Polymer.dom(window).node;
-            this._containerEl = Polymer.dom(this).node;
-            this._list = this.$.list;
-        },
-
-        _craeteScrollHandlers: function() {
-            if (!this._throttleBoundHandler) {
-                this._throttleBoundHandler = _.throttle(this.scroll.bind(this), 350);
-            }
-
-            if (!this._trottledScrollSpyHandler) {
-                this._trottledScrollSpyHandler = _.throttle(this._scrollSpyHandler.bind(this), 350);
-            }
-        },
-
-        _showSpinner: function() {
-            if(this.spinnerEl){
-                this.spinnerEl.classList.remove('hide');
-            }
-        },
-
-        _hideSpinner: function() {
-            if(this.spinnerEl){
-                this.spinnerEl.classList.add('hide');
-            }
-        },
-
-        initialLoad: function(pageRequest) {
-            var self = this;
-            this._showSpinner();
-
-            this.fetch(pageRequest).then(function() {
-                self._hideSpinner();
-                self.originLowerPointer = pageRequest;
-                self.fire('page:loaded');
-                self._createInitialElements();
-                self._craeteScrollHandlers();
-                self._addScrollEventListener();
-                self._addScrollSpyListener();
-                self._containerElOffsetTop = self._containerEl.offsetTop;
-                // Server pagination based 0 index
-                self.updateQueryString(pageRequest + 1);
-                
-                if (pageRequest >= 1 && self.upperLimit && self.lastPage >= pageRequest+1 ) {
-                    self._showBeforePageLink();
-                }
-
-                if(pageRequest+1 > self.lastPage) {
-                    self.goToLastPage();
-                }
-            });
-        },
-
-        /*
-         * Handler params.query change and reset page pages and items
-         */
-        _paramsQueryChanged: function() {
-            this._setPointers(this.page);
-            this._resetItems();
-            this._domObserverDisconnect();
-
-            if (this.page !== undefined) {
-                this.initialLoad(this.page);
-            }
-        },
-
-        /*
-         * Observe to all changes to infinite scroll element and child nodes "pages"
-         * This way we can know when new node elements or "pages" are inserted to de Dom
-         * Used to detect new page rendered after user click "show previus page" and go to prev page
-         */
-        _mutationObserve: function(cb) {
-            this.domObserver = new MutationObserver(cb);
-
-            // Observe node page list
-            var observerConfig = {
-                childList: true
-            };
-
-            // Node, config
-            // In this case we'll listen to all changes to infinite element and child nodes
-            //var root = this.querySelector(this.spyElement);
-            if (!this._list) {
-                return;
-            }
-
-            this.domObserver.observe(this._list, observerConfig);
-
-            return this.domObserver;
-        },
-
-        _addScrollEventListener: function() {
-            // Add listener for new scroll target
-            if (this._scrollTarget && !this._scrollListener && this._attached) {
-                this._scrollListener = this._scrollTarget.addEventListener('scroll', this._throttleBoundHandler);
-            }
-        },
-
-        /*
-         * Scroll Handler to detect upper and lower limits
-         * Trigger
-         */
-        scroll: function() {
-            var scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
-
-            this.set('lastKnowScrollY', scrollY);
-            this.lastKnowClientHeight = window.document.documentElement.clientHeight;
-            this.lastKnowContainerClientHeight = this._containerEl.clientHeight;
-            this._requestTick();
-        },
-
-        _requestTick: function() {
-            if (!this.ticking) {
-                requestAnimationFrame(this._updateOnScroll.bind(this));
-                this.set('ticking', true);
-            }
-        },
-
-        _handlerPrevClick: function(e) {
-            if (e) { e.preventDefault(); }
-            this._hidePreviousBtn();
-            // Save position before click actions are triggered
-            this.set('upperTriggered', true);
-        },
-
-        /*
-         * Hide Previous botton
-         */
-        _hidePreviousBtn: function() {
-            // Hide previous Btn
-            if (this.prevBottomIsRendered) {
-                this.$.prevpage.classList.add('hide');
-                this.set('prevBottomIsRendered', false);
-            }
-        },
-
-        /*
-         * On change Lower/upper triggered and it's true, call loadMore method
-         */
-        triggeredChanged: function(newValue) {
-            if (newValue) {
-                this.loadMore();
-            }
-        },
-
-        /*
-         * Load more PrevItems or NextItems if this.upperTriggered or lowerTriggered are setted
-         * After calling "prevPage" or "nextPage", is passed a callback to reset scroll listener
-         * and upperTriggered or lowerTriggered vars
-         */
-        loadMore: function() {
-            var self = this;
-            this._showSpinner();
-
-            // UP
-            if (this.upperTriggered) {
-
-                this._saveScrollPotition();
-
-                this._mutationObserve(this._mutationUpCb.bind(this));
-
-                this._removeScrollListener();
-
-                this.prevPage(function(err) {
-                    self._onTriggerPageCb(err, 'up');
-                    // Fix safari invalid scrollY on render prepend items
-                    setTimeout(function() {
-                        self._addScrollEventListener();
-                        //this.lastKnowScrollY = self._scrollTarget.scrollY;
-                    }, 50);
-                });
-            }
-
-            // DOWN
-            if (this.lowerTriggered) {
-                this._mutationObserve(this._mutationDownCb.bind(this));
-                
-                this.nextPage(function(err) {
-                    self._onTriggerPageCb(err, 'down');
-                });
-            }
-        },
-
-        _onTriggerPageCb: function(err, dir) {
-            this._clear(dir);
-            if (!err) {
-                this._showSpinner();
-            }
-        },
-
-        /*
-         * Set new upperPointer and pageRequest
-         */
-        prevPage: function(cb) {
-            var self = this;
-            this.upperPointer -= 1;
-            var pageRequest = this.upperPointer;
-
-            this._removeScrollSpyListener();
-            this.fetch(pageRequest, 'up').then(function() {
-                self.originUpperPointer = pageRequest;
-                cb();
-            }).catch(function(err) {
-                // Handle offline request
-                // Restore pointers, and page to last successfuly request
-                //console.log(err);
-                self.upperPointer = self.originUpperPointer;
-                cb(err);
-            });
-        },
-
-        /*
-         * Set new lowerPointer and pageRequest
-         */
-        nextPage: function(cb) {
-            var self = this;
-            this.lowerPointer += 1;
-            var pageRequest = this.lowerPointer;
-
-            this.fetch(pageRequest, 'down').then(function() {
-                self.originLowerPointer = pageRequest;
-                cb();
-            }).catch(function(err) {
-                //console.log(err);
-                // Handle offline request
-                // Restore pointers, and page to last successfuly request
-                self.lowerPointer = self.originLowerPointer;
-                cb(err);
-            });
-        },
-
-
-
+<template>
+  <style>
+    :host {
+      display: block;
+    }
+
+    ul {
+      list-style: none;
+      padding:0;
+      margin:0;
+    }
+
+    .hide {
+      display:none;
+    }
+
+    .show_previous_page {
+      text-align: center;
+      margin: 1.5rem 0;
+      clear: both;
+    }
+
+    .show_previous_page iron-icon {
+      top: -2px;
+      width: 20px;
+      position: relative;
+    }
+  </style>
+
+  <!--<div id="prevspinner" class="spinner hide"></div>-->
+
+  <p class="show_previous_page">
+    <a href="#" id="prevpage" class="hide">
+      <iron-icon icon="settings-backup-restore"></iron-icon>
+      <span>Show previous</span>
+    </a>
+  </p>
+
+  <!--<my-spinner id="mainspinner" class="spinner hide"></my-spinner>-->
+
+  <ul id="list" class="layout horizontal wrap"></ul>
+
+  <!--<div id="nextspinner" class="spinner hide"></div>-->
+</template>
+
+<script>
+
+// Extend Polymer.Element base class
+class PolyInfiniteScroll extends Polymer.Element {
+  static get is() { return 'poly-infinite-scroll'; }
+  static get config() {
+    return {
+      properties: {
         /**
-         * fetch data 
-         * @param  String|Number pageRequest
-         * @param  String direction Optional direction up|down
-         * @return Promise
+         * When set, the given element is observed for scroll position
          */
-        fetch: function(pageRequest, direction) {
-            var self = this;
-            
-            if (!this.params) {
-                return Promise.resolve({});
-            }
-            this.blocked = true;
-
-            var _payload = {
-                "query": this.params.query || '',
-                "page": pageRequest,
-                "pageSize": this.pageSize
-            };
-            
-            // Add initial values
-            var headers = new Headers();
-            headers.append("Content-Type", "application/json");
-
-            var request = new Request(this.endpoint, {
-              mode: 'cors',
-              cache: 'default',
-              method: 'POST',
-              headers: headers,
-              body: JSON.stringify(_payload)
-            });
-
-            return fetch(request).then(function(res) {
-                if(res.ok) {
-                    return res.json().then(function(data) {
-                        if (!data) { return; }
-                        self.page = pageRequest;
-
-                        // First initial observer
-                        if (!self.domObserver) {
-                            self._mutationObserve(self._mutationDownCb.bind(self));
-                        }
-
-                        self._onSuccess(data, pageRequest, direction);
-                    }).catch(function(err) {
-                        console.log(err);
-                    });
-                }
-            }).catch(function(err) {
-                self.blocked = false;
-                self._onErrors(err, direction);
-            });
-        },
-
-        /*
-         * Success cb is called when data is fetched
-         */
-        _onSuccess: function(data, pageRequest, direction) {
-            if (data && data.count) {
-                this.setLastPage(data.count);
-            }
-
-            // Page Request zero index
-            pageRequest += 1;
-            this.blocked = false;
-            // data received successfully
-            if (data[this.responseProp] && data[this.responseProp].length > 0) {
-                //this._prepareItems.call(this, direction, data);
-                var frag = this._prepareItems(data[this.responseProp]);
-                // Render fragment with node tree
-                this._render(frag, direction);
-            } else {
-                // No results
-                if (data.count >= 0 && data[this.responseProp].length === 0 && (pageRequest > this.lastPage)) {
-                    this._hidePreviousBtn();
-                } 
-            }
-
-            // Block Scroll down if lastpage was fetched
-            if (pageRequest === this.lastPage) {
-                this.set('isLastPage', true);
-            }
-        },
-
-        /*
-         * Error cb is called when data is fetched
-         */
-        _onErrors: function(err, direction) {
-            this._showSpinner();
-            throw err;
-        },
-
-        /*
-         * Page doesn't exist
-         * Ej: ?page=999
-         * Go to lastPage and update url
-         */
-        goToLastPage: function() {
-            var self = this;
-            this.set('upperPointer', this.lastPage);
-            return this.fetch(this.lastPage-1).then(function() {
-                self.updateQueryString(self.lastPage);
-            });
-        },
-
-        setLastPage: function(count) {
-            this.lastPage = Math.ceil(count / this.pageSize);
-        },
-
-        /*
-         * Update query param 'page', and set url with new key/value
-         */
-        updateQueryString: function(value) {
-            // Change url page on spy
-            this._addToUrl({
-                page: value
-            });
-        },
-
-        _removeScrollListener: function() {
-            this._scrollTarget.removeEventListener('scroll', this._throttleBoundHandler);
-            this._scrollListener = null;
-        },
-
-        _removeScrollSpyListener: function() {
-            this._scrollTarget.removeEventListener('scroll', this._trottledScrollSpyHandler);
-            this._scrollSpyListener = null;
-        },
-
-        _addScrollSpyListener: function() {
-            if (!this._scrollSpyListener) {
-                this._scrollSpyListener = this._scrollTarget.addEventListener('scroll', this._trottledScrollSpyHandler);
-            }
+        scrollTarget: {
+            type: Object,
+            value: null
         },
 
         /**
-         * Reset items an pages list to empty
+         * Default page number
          */
-        _resetItems: function() {
-            this.set('offsetArr', []);
-            this.set('isLastPage', false);
-            this.set('lastPage', 0);
-            this._cleanElements();
-        },
-
-        _cleanElements: function() {
-            if (this._list) {
-                while (Polymer.dom(this._list).firstChild) {
-                    Polymer.dom(this._list).removeChild(Polymer.dom(this._list).firstChild);
-                }
-                Polymer.dom.flush();
-            }
-        },
-
-        /*
-         * Get Page value from url  ?page=value
-         * @return Integer Page Number value
-         */
-        _getPageFromUrl: function() {
-            var queryString = window.location.href.split('?')[1],
-                pageFromUrl;
-
-            if (queryString) {
-                var query = this._queryParamsToHash(queryString);
-                if (query && query.page && query.page > 0) { // TODO remove
-                    pageFromUrl = query.page - 1;
-                } else {
-                    // Parse url ?page= | ?invalidQueryString
-                    return undefined;
-                }
-            }
-            return parseInt(pageFromUrl || 0);
-        },
-
-        _domObserverDisconnect: function() {
-            if (this.domObserver) {
-                this.domObserver.disconnect();
-                this.domObserver = null;
-            }
-        },
-
-        _mutationUpCb: function(mutations) {
-            this._addPageMarkup(mutations);
-            // update all position offsets
-            this._resetAllOffsets();
-            // Restore scroll position
-            this._removeScrollListener();
-            this._restoreScrollPosition();
-            this._domObserverDisconnect();
-            this._addScrollSpyListener();
-            this.restored = true;
-        },
-
-        _mutationDownCb: function(mutations) {
-            var node = this._addPageMarkup(mutations);
-            // Add new node offsetTop to offsetArr cache
-            this._addOffset(node);
-            this._domObserverDisconnect();
-        },
-
-        _addPageMarkup: function(mutations) {
-            var self = this;
-
-            var node = mutations[0].addedNodes[0];
-
-            var nodeParsed = node.nodeName && node.nodeName.toLowerCase ? node.nodeName.toLowerCase() : null;
-            if (nodeParsed === this.wrapperItemEl) {
-                Polymer.dom(node).setAttribute('pageRef', self.page + 1);
-            }
-            return node;
-        },
-
-        /*
-         * OffsetTop cache to spy on scroll
-         */
-        _addOffset: function(node) {
-            if (!node) { return; }
-            var offsetTop = node.offsetTop;
-
-            this.offsetArr.push({
-                page: this.page + 1,
-                offset: offsetTop // force layout
-            });
-        },
-
-        // Reset all OffsetTop on load previus page
-        _resetAllOffsets: function() {
-            var self = this;
-
-            var pageGroups = Polymer.dom(this._list).querySelectorAll(this.wrapperItemEl + '[pageRef]');
-
-            this.set('offsetArr', []);
-            _.map(pageGroups, function(page) {
-                var pageRef = parseInt(page.getAttribute('pageRef')),
-                    offsetTop = page.offsetTop;
-
-                self.offsetArr.push({
-                    page: pageRef,
-                    offset: offsetTop
-                });
-            });
-        },
-
-        // Debounce scroll update
-        _updateOnScroll: function() {
-            // scroll Up
-            if (this._shouldScrollUp()) {
-                if (this.lastKnowScrollY <= this.upperLimit + this._containerElOffsetTop) {
-                    this.set('upperTriggered', true);
-                }
-            }
-
-            // scroll Down
-            if (this._shouldScrollDown()) {
-                if (this.lastKnowScrollY + this.lastKnowClientHeight + this.lowerLimit >= this.lastKnowContainerClientHeight + this._containerElOffsetTop) {
-                    this.set('lowerTriggered', true);
-                }
-            }
-
-            this.set('ticking', false);
-        },
-
-        _shouldScrollUp: function() {
-            return !this.upperTriggered && this.upperLimit && !this.prevBottomIsRendered && !this.blocked && this.upperPointer > 0;
-        },
-
-        _shouldScrollDown: function() {
-            return !this.lowerTriggered && this.lowerLimit && !this.isLastPage && !this.blocked;
-        },
-
-        /*
-         * Spy page containers and change url ?page=value
-         */
-        _scrollSpyHandler: function() {
-            var i,
-                scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
-
-            // Find offset into cache offset containers
-            for (i = this.offsetArr.length - 1; i >= 0; i -= 1) {
-                var offset = this.offsetArr[i].offset,
-                    page = this.offsetArr[i].page;
-
-                if (offset < scrollY + 350) {
-                    this.updateQueryString(page);
-                    break;
-                }
-            }
-
-            if (scrollY <= 0) {
-                this.updateQueryString(this.upperPointer + 1);
-            }
-        },
-
-        /*
-         * Parse queryString to hash and update this.params.query
-         */
-        _parseQueryString: function() {
-            var self = this,
-                queryString = window.location.href.split('?')[1];
-
-            if (queryString) {
-                var tmpQueryUrl = _.omit(this._queryParamsToHash(queryString), ['page']);
-
-                tmpQueryUrl = this._paramsToArray(tmpQueryUrl);
-
-                var tmp = [];
-                if (self.params && self.params.query) {
-                    tmp = JSON.parse(self.params.query);
-                }
-
-                _.each(tmpQueryUrl, function(value, key) {
-                    //  query:[{"$in":{"lang":["spa"]}},{"$in":{"topics":["YF"]}}]
-                    var obj = {};
-                    obj[key] = _.clone(value);
-                    var aux = {
-                        '$in': obj
-                    };
-                    tmp.push(aux);
-                });
-
-                if (this.params) {
-                    this.params.query = JSON.stringify(tmp);
-                }
-            }
+        page: {
+            type: Number,
+            notify: true,
+            value: 0
         },
 
         /**
-         * Clear the lower/upper limit, following a `upper/lower-trigger` event.
-         * @method clear
+         * Default pageSize to paginate
          */
-        _clear: function(dir) {
-            var self = this;
-            this.async(function() {
-                var trigger = dir === 'up' ? 'upperTriggered' : 'lowerTriggered';
-                self.set(trigger, false);
-                self._hideSpinner();
-            });
+        pageSize: {
+            type: Number,
+            value: 12
         },
 
-        /*
-         * Add page with items fetched, to items array
+        /**
+         * Distance from the top bound of the scroller
+         * where the "upper trigger" will fire.
          */
-        _prepareItems: function(data) {
-            var self = this;
-
-            var _dataSource = data,
-                frag = document.createDocumentFragment();
-
-            // Generate node tree
-            _.map(_dataSource, function(item) {
-                var _el = self._buildItem(item, _dataSource);
-                frag.appendChild(_el);
-            });
-
-            return frag;
+        upperLimit: {
+            type: Number,
+            value: 0
         },
 
-        _buildItem: function(item, dataSource) {
-            var _instance,
-                _item;
-
-            _instance = document.createElement(this.element);
-
-            // Create list item
-            _item = document.createElement(this.wrapperItemEl);
-            _instance.item = item;
-            Polymer.dom(_item).classList.add(this.elementClass);
-            Polymer.dom(_item).appendChild(_instance);
-            return _item;
-        },
-
-        _render: function(frag, dir) {
-            if (dir === 'up') {
-                this._hidePreviousBtn();
-                Polymer.dom(this.$.list).insertBefore(frag, Polymer.dom(this.$.list).firstChild);
-            } else {
-                Polymer.dom(this.$.list).appendChild(frag);
-            }
-            Polymer.dom.flush();
-        },
-
-        /*
-         * Show previous button and block upper scroll untill user clicks this button
-         * If button is clicked, load previuos page
+        /**
+         * Distance from the bottom bound of the scroller
+         * where the "lower trigger" will fire.
          */
-        _showBeforePageLink: function() {
-            // Block upper scroll untill click de bottom
-            this.set('upperTriggered', false);
-            // Show previous buttom at top
-            this.$.prevpage.classList.remove('hide');
-            this.set('prevBottomIsRendered', true);
+        lowerLimit: {
+            type: Number,
+            value: 0
         },
 
-        /*
-         * Restore scrollTop position
+        /**
+         * Value that tracks the triggered state of the upper bound
          */
-        _restoreScrollPosition: function() {
-            var _target = window.document.body;
-            if (window.document.body.scrollHeight < window.document.documentElement.scrollHeight) {
-                _target = window.document.documentElement;
-            }
-
-            var newScrollPosition = _target.scrollHeight - this.previousScrollHeightMinusTop;
-            _target.scrollTop = newScrollPosition;
+        upperTriggered: {
+            type: Boolean,
+            value: false,
+            notify: true,
+            observer: 'triggeredChanged'
         },
 
-        /*
-         * Save scrollTop position
+        /**
+         * Value that tracks the triggered state of the lower bound
          */
-        _saveScrollPotition: function() {
-            var _target = window.document.body;
-            if (window.document.body.scrollHeight < window.document.documentElement.scrollHeight) {
-                _target = window.document.documentElement;
-            }
-            this.previousScrollHeightMinusTop = _target.scrollHeight - _target.scrollTop;
+        lowerTriggered: {
+            type: Boolean,
+            value: false,
+            notify: true,
+            observer: 'triggeredChanged'
         },
 
-        /*
-         * Set upperPointer and lowerPointer on initial setup
-         * default = 1
-         */
-        _setPointers: function(pageInitial) {
-            this.upperPointer = this.lowerPointer = pageInitial;
+        // Track previous pages loaded
+        upperPointer: {
+            type: Number,
+            value: 1
         },
 
-        // Parses a query string into a hash
-        _queryParamsToHash: function(str) {
-            if (!str) {
-                return {};
-            }
-
-            var bracketRegex = /(?:([^\[]+))|(?:\[(.*?)\])/g;
-            var plusRegex = /\+/g;
-
-            var parameters = str.split('&'),
-                obj = {},
-                key,
-                match,
-                lastKey,
-                subKey,
-                depth;
-
-            // Iterate over key/value pairs
-            _.each(parameters, function(parameter) {
-                parameter = parameter.split('=');
-                key = decodeURIComponent(parameter[0].replace(plusRegex, '%20'));
-                lastKey = key;
-                depth = obj;
-
-                // Reset so we don't have issues when matching the same string
-                bracketRegex.lastIndex = 0;
-
-                // Attempt to extract nested values
-                while ((match = bracketRegex.exec(key)) !== null) {
-                    if (!_.isUndefined(match[1])) {
-
-                        // If we're at the top nested level, no new object needed
-                        subKey = match[1];
-                    } else {
-                        // If we're at a lower nested level, we need to step down, and make
-                        // sure that there is an object to place the value into
-                        subKey = match[2];
-                        depth[lastKey] = depth[lastKey] || (subKey ? {} : []);
-                        depth = depth[lastKey];
-                    }
-
-                    // Save the correct key as a hash or an array
-                    lastKey = subKey || _.size(depth);
-                }
-
-                // Assign value to nested object
-                try {
-                    depth[lastKey] = decodeURIComponent(parameter[1].replace(plusRegex, '%20'));
-                } catch (err) {
-                    console.log(err);
-                }
-            });
-
-            return obj;
+        // Track next pages loaded
+        lowerPointer: {
+            type: Number,
+            value: 1
         },
 
-        _paramsToArray: function(params) {
-            _.each(params, function(value, key) {
-                params[key] = value.split(',');
-            });
-            return params;
+        element: {
+            type: String
         },
 
-        _addToUrl: function(params) {
-
-            if (params === undefined || typeof params !== typeof {}) {
-                throw new Error('Error: utils.addToUrl: invalid params');
-            }
-
-            var stringParams;
-            var url = window.location.href;
-            var self = this;
-
-            _.each(params, function(value, key) {
-                url = self._removeQueryStringParameter(url, key);
-            });
-
-            _.each(params, function(value, key) {
-                if (value === '') {
-                    return;
-                }
-                stringParams = '';
-                if (typeof value === Array) {
-                    value.forEach(function(arrayValue) {
-                        stringParams += arrayValue + ',';
-                    });
-                    stringParams = stringParams.substring(0, stringParams.length - 1);
-                } else {
-                    stringParams += value;
-                }
-                url = self._updateQueryStringParameter(url, key, stringParams);
-            });
-
-            url = url.replace(/\?&/, '?');
-
-            if (url.lastIndexOf('?') === url.length - 1) {
-                url = url.substring(0, url.length - 1);
-            }
-            window.history.replaceState(null, null, url);
+        elementClass: {
+            type: String
         },
 
-        _updateQueryStringParameter: function(uri, key, value) {
-            var re = new RegExp('([?&])' + key + '=.*?(&|$)', 'i');
-            var separator = uri.indexOf('?') !== -1 ? '&' : '?';
-            if (uri.match(re)) {
-                return uri.replace(re, '$1' + key + '=' + value + '$2');
-            } else {
-                return uri + separator + key + '=' + value;
-            }
+        isLastPage: {
+            type: Boolean,
+            value: false
         },
 
-        _removeQueryStringParameter: function(url, parameter) {
-            var urlparts = url.split('?');
+        lastPage: {
+            type: Number
+        },
 
-            if (urlparts.length >= 2) {
+        params: {
+            type: Object,
+            notify: true
+        },
 
-                var prefix = encodeURIComponent(parameter) + '=';
-                var pars = urlparts[1].split(/[&;]/g);
+        offsetArr: {
+            type: Array,
+            value: []
+        },
 
-                for (var i = pars.length; i-- > 0;) {
-                    if (pars[i].lastIndexOf(prefix, 0) !== -1) {
-                        pars.splice(i, 1);
-                    }
-                }
+        lastKnowScrollY: {
+            type: Number,
+            value: 1
+        },
 
-                url = urlparts[0] + '?' + pars.join('&');
-            }
-            return url;
+        ticking: {
+            type: Boolean,
+            value: false
+        },
+
+        endpoint: {
+            type: String,
+            value: ''
+        },
+
+        responseProp: {
+            type: String,
+            value: ''
+        },
+
+        wrapperItemEl: {
+            type: String,
+            value: 'li'
+        },
+
+        spinner: {
+            type: String,
+            value: ''
         }
+      },
 
+      observers: [ '_init(params, pageSize, upperLimit, lowerLimit, scrollTarget)' ]
+    }
+  }
+
+  constructor() {
+    super();
+    console.log('created');
+  }
+
+  disconnectedCallback(){
+    super.disconnectedCallback();
+    console.log('detached');
+    // Remove listener for any previous scroll target
+    this._attached = false;
+    this._removeScrollListener();
+    this._removeScrollSpyListener();
+    this.$.prevpage.removeEventListener('click', this._handlerPrevClick);
+
+    this._resetItems();
+    this.blocked = true;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    console.log('attached');
+    this._attached = true;
+    this._createInitialElements();
+    this._craeteScrollHandlers();
+    // PrevPage click listener
+    this.$.prevpage.addEventListener('click', this._handlerPrevClick.bind(this));
+  }
+
+  ready(){
+    super.ready();
+    console.log('ready');
+  }
+
+  _init() {
+    if(this.spinner) {
+      this._createSpinnerEl();
+    }
+
+    if (this._scrollListener) {
+      this._removeScrollListener();
+    }
+
+    if (this._scrollSpyListener) {
+      this._removeScrollSpyListener();
+    }
+
+    this._resetItems();
+
+    // Get pageFromUrl on init or default page value
+    this.page = this._getPageFromUrl(); // 0 index
+
+    // Refresh with filters
+    //this._parseQueryString();
+
+    // Set upper and lower pointers 0 index based
+    this._setPointers(this.page);
+
+    // Clear trigger state if user has cleared the limit
+    if (!this.upperLimit) {
+      this.set('upperTriggered', false);
+    }
+
+    if (!this.lowerLimit) {
+      this.set('lowerTriggered', false);
+    }
+
+    // last valid upperPointer
+    this.originUpperPointer = this.originLowerPointer = 1;
+    this.blocked = false;
+    this.restored = false;
+
+    this.initialLoad(this.page);
+  }
+
+  _createSpinnerEl() {
+    this._idSpinner = 'mainspinner';
+    var _item = document.createElement(this.spinner);
+    // Use native DOM API's instead of Polymer.dom
+    Polymer.dom(_item).setAttribute('id', this._idSpinner);
+    Polymer.dom(_item).classList.add('hide');
+    Polymer.dom(this.root).appendChild(_item);
+    this.spinnerEl = this.$$('#'+this._idSpinner);
+  }
+
+  _createInitialElements() {
+    this._scrollTarget = Polymer.dom(window).node;
+    this._containerEl = Polymer.dom(this).node;
+    this._list = this.$.list;
+  }
+
+  _craeteScrollHandlers() {
+    if (!this._throttleBoundHandler) {
+      this._throttleBoundHandler = _.throttle(this.scroll.bind(this), 350);
+    }
+
+    if (!this._trottledScrollSpyHandler) {
+      this._trottledScrollSpyHandler = _.throttle(this._scrollSpyHandler.bind(this), 350);
+    }
+  }
+
+  _showSpinner() {
+    if(this.spinnerEl){
+      this.spinnerEl.classList.remove('hide');
+    }
+  }
+
+  _hideSpinner() {
+    if(this.spinnerEl){
+      this.spinnerEl.classList.add('hide');
+    }
+  }
+
+  initialLoad(pageRequest) {
+    this._showSpinner();
+
+    this.fetch(pageRequest)
+    .then(() => {
+      this._hideSpinner();
+      this.originLowerPointer = pageRequest;
+      this.fire('page:loaded');
+      this._createInitialElements();
+      this._craeteScrollHandlers();
+      this._addScrollEventListener();
+      this._addScrollSpyListener();
+      this._containerElOffsetTop = this._containerEl.offsetTop;
+      // Server pagination based 0 index
+      this.updateQueryString(pageRequest + 1);
+
+      if (pageRequest >= 1 && this.upperLimit && this.lastPage >= pageRequest+1 ) {
+        this._showBeforePageLink();
+      }
+
+      if(pageRequest+1 > this.lastPage) {
+        this.goToLastPage();
+      }
     });
-  </script>
+  }
+
+  /*
+   * Handler params.query change and reset page pages and items
+   */
+  _paramsQueryChanged() {
+    this._setPointers(this.page);
+    this._resetItems();
+    this._domObserverDisconnect();
+
+    if (this.page !== undefined) {
+      this.initialLoad(this.page);
+    }
+  }
+
+  /*
+   * Observe to all changes to infinite scroll element and child nodes "pages"
+   * This way we can know when new node elements or "pages" are inserted to de Dom
+   * Used to detect new page rendered after user click "show previus page" and go to prev page
+   */
+  _mutationObserve(cb) {
+    this.domObserver = new MutationObserver(cb);
+
+    // Observe node page list
+    var observerConfig = { childList: true };
+
+    // Node, config
+    // In this case we'll listen to all changes to infinite element and child nodes
+    //var root = this.querySelector(this.spyElement);
+    if (!this._list) { return; }
+
+    this.domObserver.observe(this._list, observerConfig);
+
+    return this.domObserver;
+  }
+
+  _addScrollEventListener() {
+    // Add listener for new scroll target
+    if (this._scrollTarget && !this._scrollListener && this._attached) {
+      this._scrollListener = this._scrollTarget.addEventListener('scroll', this._throttleBoundHandler);
+    }
+  }
+
+  /*
+   * Scroll Handler to detect upper and lower limits
+   * Trigger
+   */
+  scroll() {
+    var scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
+
+    this.set('lastKnowScrollY', scrollY);
+    this.lastKnowClientHeight = window.document.documentElement.clientHeight;
+    this.lastKnowContainerClientHeight = this._containerEl.clientHeight;
+    this._requestTick();
+  }
+
+  _requestTick() {
+    if (!this.ticking) {
+      requestAnimationFrame(this._updateOnScroll.bind(this));
+      this.set('ticking', true);
+    }
+  }
+
+  _handlerPrevClick(e) {
+    if (e) { e.preventDefault(); }
+    this._hidePreviousBtn();
+    // Save position before click actions are triggered
+    this.set('upperTriggered', true);
+  }
+
+  /*
+   * Hide Previous botton
+   */
+  _hidePreviousBtn() {
+    // Hide previous Btn
+    if (this.prevBottomIsRendered) {
+      this.$.prevpage.classList.add('hide');
+      this.set('prevBottomIsRendered', false);
+    }
+  }
+
+  /*
+   * On change Lower/upper triggered and it's true, call loadMore method
+   */
+  triggeredChanged(newValue) {
+    if (newValue) {
+      this.loadMore();
+    }
+  }
+
+  /*
+   * Load more PrevItems or NextItems if this.upperTriggered or lowerTriggered are setted
+   * After calling "prevPage" or "nextPage", is passed a callback to reset scroll listener
+   * and upperTriggered or lowerTriggered vars
+   */
+  loadMore() {
+    this._showSpinner();
+
+    // UP
+    if (this.upperTriggered) {
+      this._saveScrollPotition();
+      this._mutationObserve(this._mutationUpCb.bind(this));
+      this._removeScrollListener();
+
+      this.prevPage((err) => {
+        this._onTriggerPageCb(err, 'up');
+        // Fix safari invalid scrollY on render prepend items
+        setTimeout(() => {
+          this._addScrollEventListener();
+          //this.lastKnowScrollY = self._scrollTarget.scrollY;
+        }, 50);
+      });
+    }
+
+    // DOWN
+    if (this.lowerTriggered) {
+      this._mutationObserve(this._mutationDownCb.bind(this));
+
+      this.nextPage((err) => {
+        this._onTriggerPageCb(err, 'down');
+      });
+    }
+  }
+
+  _onTriggerPageCb(err, dir) {
+    this._clear(dir);
+    if (!err) {
+      this._showSpinner();
+    }
+  }
+
+  /*
+   * Set new upperPointer and pageRequest
+   */
+  prevPage(cb) {
+    this.upperPointer -= 1;
+    var pageRequest = this.upperPointer;
+
+    this._removeScrollSpyListener();
+    this.fetch(pageRequest, 'up').then(() => {
+      this.originUpperPointer = pageRequest;
+      cb();
+    }).catch((err) => {
+      // Handle offline request
+      // Restore pointers, and page to last successfuly request
+      //console.log(err);
+      this.upperPointer = this.originUpperPointer;
+      cb(err);
+    });
+  }
+
+  /*
+   * Set new lowerPointer and pageRequest
+   */
+  nextPage(cb) {
+    var self = this;
+    this.lowerPointer += 1;
+    var pageRequest = this.lowerPointer;
+
+    this.fetch(pageRequest, 'down').then(() => {
+      this.originLowerPointer = pageRequest;
+      cb();
+    }).catch((err) => {
+      //console.log(err);
+      // Handle offline request
+      // Restore pointers, and page to last successfuly request
+      this.lowerPointer = this.originLowerPointer;
+      cb(err);
+    });
+  }
+
+  /**
+   * fetch data
+   * @param  String|Number pageRequest
+   * @param  String direction Optional direction up|down
+   * @return Promise
+   */
+  fetch(pageRequest, direction) {
+    if (!this.params) {
+        return Promise.resolve({});
+    }
+    this.blocked = true;
+
+    var _payload = {
+      "query": this.params.query || '',
+      "page": pageRequest,
+      "pageSize": this.pageSize
+    };
+
+    // Add initial values
+    var headers = new Headers();
+    headers.append("Content-Type", "application/json");
+
+    var request = new Request(this.endpoint, {
+      mode: 'cors',
+      cache: 'default',
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(_payload)
+    });
+
+    return fetch(request).then((res) => {
+      if(res.ok) {
+        return res.json().then((data) => {
+          if (!data) { return; }
+          this.page = pageRequest;
+
+          // First initial observer
+          if (!this.domObserver) {
+            this._mutationObserve(this._mutationDownCb.bind(this));
+          }
+
+          this._onSuccess(data, pageRequest, direction);
+        }).catch(function(err) {
+          console.log(err);
+        });
+      }
+    }).catch((err) => {
+      this.blocked = false;
+      this._onErrors(err, direction);
+    });
+  }
+
+  /*
+   * Success cb is called when data is fetched
+   */
+  _onSuccess(data, pageRequest, direction) {
+    if (data && data.count) {
+      this.setLastPage(data.count);
+    }
+
+    // Page Request zero index
+    pageRequest += 1;
+    this.blocked = false;
+    // data received successfully
+    if (data[this.responseProp] && data[this.responseProp].length > 0) {
+      //this._prepareItems.call(this, direction, data);
+      var frag = this._prepareItems(data[this.responseProp]);
+      // Render fragment with node tree
+      this._render(frag, direction);
+    } else {
+      // No results
+      if (data.count >= 0 && data[this.responseProp].length === 0 && (pageRequest > this.lastPage)) {
+        this._hidePreviousBtn();
+      }
+    }
+
+    // Block Scroll down if lastpage was fetched
+    if (pageRequest === this.lastPage) {
+      this.set('isLastPage', true);
+    }
+  }
+
+  /*
+   * Error cb is called when data is fetched
+   */
+  _onErrors(err, direction) {
+    this._showSpinner();
+    throw err;
+  }
+
+  /*
+   * Page doesn't exist
+   * Ej: ?page=999
+   * Go to lastPage and update url
+   */
+  goToLastPage() {
+    this.set('upperPointer', this.lastPage);
+    return this.fetch(this.lastPage-1).then(() => {
+      this.updateQueryString(this.lastPage);
+    });
+  }
+
+  setLastPage(count) {
+    this.lastPage = Math.ceil(count / this.pageSize);
+  }
+
+  /*
+   * Update query param 'page', and set url with new key/value
+   */
+  updateQueryString(value) {
+    // Change url page on spy
+    this._addToUrl({ page: value });
+  }
+
+  _removeScrollListener() {
+    this._scrollTarget.removeEventListener('scroll', this._throttleBoundHandler);
+    this._scrollListener = null;
+  }
+
+  _removeScrollSpyListener() {
+    this._scrollTarget.removeEventListener('scroll', this._trottledScrollSpyHandler);
+    this._scrollSpyListener = null;
+  }
+
+  _addScrollSpyListener() {
+    if (!this._scrollSpyListener) {
+      this._scrollSpyListener = this._scrollTarget.addEventListener('scroll',this._trottledScrollSpyHandler);
+    }
+  }
+
+  /**
+   * Reset items an pages list to empty
+   */
+  _resetItems() {
+    this.set('offsetArr', []);
+    this.set('isLastPage', false);
+    this.set('lastPage', 0);
+    this._cleanElements();
+  }
+
+  _cleanElements() {
+    if (this._list) {
+      while (Polymer.dom(this._list).firstChild) {
+        Polymer.dom(this._list).removeChild(Polymer.dom(this._list).firstChild);
+      }
+      Polymer.dom.flush();
+    }
+  }
+
+  /*
+   * Get Page value from url  ?page=value
+   * @return Integer Page Number value
+   */
+  _getPageFromUrl() {
+    var queryString = window.location.href.split('?')[1],
+      pageFromUrl;
+
+    if (queryString) {
+      var query = this._queryParamsToHash(queryString);
+      if (query && query.page && query.page > 0) { // TODO remove
+          pageFromUrl = query.page - 1;
+      } else {
+          // Parse url ?page= | ?invalidQueryString
+          return undefined;
+      }
+    }
+    return parseInt(pageFromUrl || 0);
+  }
+
+  _domObserverDisconnect() {
+    if (this.domObserver) {
+      this.domObserver.disconnect();
+      this.domObserver = null;
+    }
+  }
+
+  _mutationUpCb(mutations) {
+    this._addPageMarkup(mutations);
+    // update all position offsets
+    this._resetAllOffsets();
+    // Restore scroll position
+    this._removeScrollListener();
+    this._restoreScrollPosition();
+    this._domObserverDisconnect();
+    this._addScrollSpyListener();
+    this.restored = true;
+  }
+
+  _mutationDownCb(mutations) {
+    var node = this._addPageMarkup(mutations);
+    // Add new node offsetTop to offsetArr cache
+    this._addOffset(node);
+    this._domObserverDisconnect();
+  }
+
+  _addPageMarkup(mutations) {
+    var node = mutations[0].addedNodes[0];
+
+    var nodeParsed = node.nodeName && node.nodeName.toLowerCase ? node.nodeName.toLowerCase() : null;
+    if (nodeParsed === this.wrapperItemEl) {
+        Polymer.dom(node).setAttribute('pageRef', this.page + 1);
+    }
+    return node;
+  }
+
+  /*
+   * OffsetTop cache to spy on scroll
+   */
+  _addOffset(node) {
+    if (!node) { return; }
+    var offsetTop = node.offsetTop;
+
+    this.offsetArr.push({
+      page: this.page + 1,
+      offset: offsetTop // force layout
+    });
+  }
+
+  // Reset all OffsetTop on load previus page
+  _resetAllOffsets() {
+    var pageGroups = Polymer.dom(this._list).querySelectorAll(this.wrapperItemEl + '[pageRef]');
+
+    this.set('offsetArr', []);
+    _.map(pageGroups, (page) => {
+      var pageRef = parseInt(page.getAttribute('pageRef')),
+        offsetTop = page.offsetTop;
+
+      this.offsetArr.push({
+        page: pageRef,
+        offset: offsetTop
+      });
+    });
+  }
+
+  // Debounce scroll update
+  _updateOnScroll() {
+    // scroll Up
+    if (this._shouldScrollUp()) {
+      if (this.lastKnowScrollY <= this.upperLimit + this._containerElOffsetTop) {
+        this.set('upperTriggered', true);
+      }
+    }
+
+    // scroll Down
+    if (this._shouldScrollDown()) {
+      if (this.lastKnowScrollY + this.lastKnowClientHeight + this.lowerLimit >= this.lastKnowContainerClientHeight + this._containerElOffsetTop) {
+        this.set('lowerTriggered', true);
+      }
+    }
+
+    this.set('ticking', false);
+  }
+
+  _shouldScrollUp() {
+    return !this.upperTriggered && this.upperLimit && !this.prevBottomIsRendered && !this.blocked && this.upperPointer > 0;
+  }
+
+  _shouldScrollDown() {
+    return !this.lowerTriggered && this.lowerLimit && !this.isLastPage && !this.blocked;
+  }
+
+  /*
+   * Spy page containers and change url ?page=value
+   */
+  _scrollSpyHandler() {
+    var i,
+      scrollY = this._scrollTarget.scrollY || this._scrollTarget.pageYOffset;
+
+    // Find offset into cache offset containers
+    for (i = this.offsetArr.length - 1; i >= 0; i -= 1) {
+      var offset = this.offsetArr[i].offset,
+        page = this.offsetArr[i].page;
+
+      if (offset < scrollY + 350) {
+        this.updateQueryString(page);
+        break;
+      }
+    }
+
+    if (scrollY <= 0) {
+      this.updateQueryString(this.upperPointer + 1);
+    }
+  }
+
+  /*
+   * Parse queryString to hash and update this.params.query
+   */
+  _parseQueryString() {
+    var queryString = window.location.href.split('?')[1];
+
+    if (queryString) {
+      var tmpQueryUrl = _.omit(this._queryParamsToHash(queryString), ['page']);
+
+      tmpQueryUrl = this._paramsToArray(tmpQueryUrl);
+
+      var tmp = [];
+      if (this.params && this.params.query) {
+        tmp = JSON.parse(this.params.query);
+      }
+
+      _.each(tmpQueryUrl, function(value, key) {
+        //  query:[{"$in":{"lang":["spa"]}},{"$in":{"topics":["YF"]}}]
+        var obj = {};
+        obj[key] = _.clone(value);
+        var aux = {
+            '$in': obj
+        };
+        tmp.push(aux);
+      });
+
+      if (this.params) {
+        this.params.query = JSON.stringify(tmp);
+      }
+    }
+  }
+
+  /**
+   * Clear the lower/upper limit, following a `upper/lower-trigger` event.
+   * @method clear
+   */
+  _clear(dir) {
+    this.async(() => {
+      var trigger = dir === 'up' ? 'upperTriggered' : 'lowerTriggered';
+      this.set(trigger, false);
+      this._hideSpinner();
+    });
+  }
+
+  /*
+   * Add page with items fetched, to items array
+   */
+  _prepareItems(data) {
+    var _dataSource = data,
+      frag = document.createDocumentFragment();
+
+    // Generate node tree
+    _.map(_dataSource, (item) => {
+      var _el = this._buildItem(item, _dataSource);
+      frag.appendChild(_el);
+    });
+    return frag;
+  }
+
+  _buildItem(item, dataSource) {
+    var _instance,
+      _item;
+
+    _instance = document.createElement(this.element);
+
+    // Create list item
+    _item = document.createElement(this.wrapperItemEl);
+    _instance.item = item;
+    Polymer.dom(_item).classList.add(this.elementClass);
+    Polymer.dom(_item).appendChild(_instance);
+    return _item;
+  }
+
+  _render(frag, dir) {
+    if (dir === 'up') {
+      this._hidePreviousBtn();
+      Polymer.dom(this.$.list).insertBefore(frag, Polymer.dom(this.$.list).firstChild);
+    } else {
+      Polymer.dom(this.$.list).appendChild(frag);
+    }
+    Polymer.dom.flush();
+  }
+
+  /*
+   * Show previous button and block upper scroll untill user clicks this button
+   * If button is clicked, load previuos page
+   */
+  _showBeforePageLink() {
+    // Block upper scroll untill click de bottom
+    this.set('upperTriggered', false);
+    // Show previous buttom at top
+    this.$.prevpage.classList.remove('hide');
+    this.set('prevBottomIsRendered', true);
+  }
+
+  /*
+   * Restore scrollTop position
+   */
+  _restoreScrollPosition() {
+    var _target = window.document.body;
+    if (window.document.body.scrollHeight < window.document.documentElement.scrollHeight) {
+      _target = window.document.documentElement;
+    }
+
+    var newScrollPosition = _target.scrollHeight - this.previousScrollHeightMinusTop;
+    _target.scrollTop = newScrollPosition;
+  }
+
+  /*
+   * Save scrollTop position
+   */
+  _saveScrollPotition() {
+    var _target = window.document.body;
+    if (window.document.body.scrollHeight < window.document.documentElement.scrollHeight) {
+      _target = window.document.documentElement;
+    }
+    this.previousScrollHeightMinusTop = _target.scrollHeight - _target.scrollTop;
+  }
+
+  /*
+   * Set upperPointer and lowerPointer on initial setup
+   * default = 1
+   */
+  _setPointers(pageInitial) {
+    this.upperPointer = this.lowerPointer = pageInitial;
+  }
+
+  // Parses a query string into a hash
+  _queryParamsToHash(str) {
+    if (!str) {
+      return {};
+    }
+
+    var bracketRegex = /(?:([^\[]+))|(?:\[(.*?)\])/g;
+    var plusRegex = /\+/g;
+
+    var parameters = str.split('&'),
+      obj = {},
+      key,
+      match,
+      lastKey,
+      subKey,
+      depth;
+
+    // Iterate over key/value pairs
+    _.each(parameters, function(parameter) {
+      parameter = parameter.split('=');
+      key = decodeURIComponent(parameter[0].replace(plusRegex, '%20'));
+      lastKey = key;
+      depth = obj;
+
+      // Reset so we don't have issues when matching the same string
+      bracketRegex.lastIndex = 0;
+
+      // Attempt to extract nested values
+      while ((match = bracketRegex.exec(key)) !== null) {
+        if (!_.isUndefined(match[1])) {
+
+          // If we're at the top nested level, no new object needed
+          subKey = match[1];
+        } else {
+          // If we're at a lower nested level, we need to step down, and make
+          // sure that there is an object to place the value into
+          subKey = match[2];
+          depth[lastKey] = depth[lastKey] || (subKey ? {} : []);
+          depth = depth[lastKey];
+        }
+        // Save the correct key as a hash or an array
+        lastKey = subKey || _.size(depth);
+      }
+
+      // Assign value to nested object
+      try {
+        depth[lastKey] = decodeURIComponent(parameter[1].replace(plusRegex, '%20'));
+      } catch (err) {
+        console.log(err);
+      }
+    });
+
+    return obj;
+  }
+
+  _paramsToArray(params) {
+    _.each(params, function(value, key) {
+      params[key] = value.split(',');
+    });
+    return params;
+  }
+
+  _addToUrl(params) {
+
+    if (params === undefined || typeof params !== typeof {}) {
+      throw new Error('Error: utils.addToUrl: invalid params');
+    }
+
+    var stringParams;
+    var url = window.location.href;
+
+    _.each(params, (value, key) => {
+      url = this._removeQueryStringParameter(url, key);
+    });
+
+    _.each(params, (value, key) => {
+      if (value === '') {
+        return;
+      }
+      stringParams = '';
+      if (typeof value === Array) {
+        value.forEach(function(arrayValue) {
+            stringParams += arrayValue + ',';
+        });
+        stringParams = stringParams.substring(0, stringParams.length - 1);
+      } else {
+        stringParams += value;
+      }
+      url = this._updateQueryStringParameter(url, key, stringParams);
+    });
+
+    url = url.replace(/\?&/, '?');
+
+    if (url.lastIndexOf('?') === url.length - 1) {
+      url = url.substring(0, url.length - 1);
+    }
+    window.history.replaceState(null, null, url);
+  }
+
+  _updateQueryStringParameter(uri, key, value) {
+    var re = new RegExp('([?&])' + key + '=.*?(&|$)', 'i');
+    var separator = uri.indexOf('?') !== -1 ? '&' : '?';
+    if (uri.match(re)) {
+      return uri.replace(re, '$1' + key + '=' + value + '$2');
+    } else {
+      return uri + separator + key + '=' + value;
+    }
+  }
+
+  _removeQueryStringParameter(url, parameter) {
+    var urlparts = url.split('?');
+
+    if (urlparts.length >= 2) {
+      var prefix = encodeURIComponent(parameter) + '=';
+      var pars = urlparts[1].split(/[&;]/g);
+
+      for (var i = pars.length; i-- > 0;) {
+        if (pars[i].lastIndexOf(prefix, 0) !== -1) {
+          pars.splice(i, 1);
+        }
+      }
+      url = urlparts[0] + '?' + pars.join('&');
+    }
+    return url;
+  }
+
+}
+
+// Register custom element definition using standard platform API
+customElements.define(PolyInfiniteScroll.is, PolyInfiniteScroll);
+
+</script>
 </dom-module>
